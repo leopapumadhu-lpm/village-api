@@ -4,3 +4,7 @@ __pycache__/
 *.pyc
 .vercel
 dist/
+all_india_villages_clean.csv
+*.log
+.DS_Store
+import_*.log

@@ -1,8 +1,0 @@
-2026-04-05 23:59:00,171 [INFO] Starting import from: all_india_villages_clean.csv
-2026-04-05 23:59:00,171 [INFO] Reading CSV file...
-2026-04-05 23:59:01,077 [INFO] Loaded 619,225 rows
-2026-04-05 23:59:02,337 [INFO] Country 'India' id=1
-2026-04-05 23:59:03,623 [INFO] Upserted 30 states
-2026-04-05 23:59:25,829 [INFO] Upserted 580 districts
-2026-04-06 00:03:04,745 [INFO] Upserted 5697 sub-districts
-2026-04-06 00:03:04,787 [INFO] Inserting villages in batches of 5,000...
