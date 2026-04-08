@@ -1,25 +1,28 @@
 import { useState, useEffect } from "react";
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { getStates, getDistricts, getSubDistricts, getVillages, searchVillages } from "./api";
+import { useAuth } from "./hooks/useAuth";
+import { getStates, getDistricts, getSubDistricts, getVillages } from "./api";
 
 const COLORS = ["#378ADD", "#1D9E75", "#D85A30", "#BA7517"];
-const requestsData = Array.from({ length: 30 }, (_, i) => ({ date: `Apr ${i + 1}`, requests: Math.floor(Math.random() * 80000 + 20000) }));
-const statesData = [{ state: "Uttar Pradesh", villages: 107106 }, { state: "Madhya Pradesh", villages: 55065 }, { state: "Odisha", villages: 51476 }, { state: "Bihar", villages: 44937 }, { state: "Rajasthan", villages: 44796 }, { state: "Maharashtra", villages: 43946 }];
-const planData = [{ name: "Free", value: 1240 }, { name: "Premium", value: 430 }, { name: "Pro", value: 185 }, { name: "Unlimited", value: 42 }];
-const recentLogs = [{ time: "14:32:01", key: "ak_****ab12", user: "Flipkart Inc.", endpoint: "/v1/search", ms: 43, status: 200 }, { time: "14:31:58", key: "ak_****cd34", user: "Razorpay Ltd.", endpoint: "/v1/states/27/districts", ms: 21, status: 200 }, { time: "14:31:44", key: "ak_****ij90", user: "OYO Rooms.", endpoint: "/v1/subdistricts/99/villages", ms: 312, status: 429 }];
 
 function Badge({ label, type = "info" }) {
-  const c = { info: ["#E6F1FB","#042C53"], success: ["#E1F5EE","#04342C"], warning: ["#FAEEDA","#412402"], danger: ["#FCEBEB","#501313"] }[type] || ["#E6F1FB","#042C53"];
-  return <span style={{ background: c[0], color: c[1], fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 6 }}>{label}</span>;
+  const colors = {
+    info: "bg-blue-100 text-blue-800",
+    success: "bg-green-100 text-green-800",
+    warning: "bg-yellow-100 text-yellow-800",
+    danger: "bg-red-100 text-red-800"
+  };
+  return <span className={`${colors[type]} px-2 py-1 rounded text-xs font-medium`}>{label}</span>;
 }
 
 function Card({ children }) {
-  return <div style={{ background: "white", border: "0.5px solid #e0e0e0", borderRadius: 12, padding: "1rem 1.25rem", marginBottom: "1.25rem" }}>{children}</div>;
+  return <div className="bg-white border border-gray-200 rounded-lg p-6 mb-5">{children}</div>;
 }
 
 const TABS = ["Overview", "API Logs", "Users", "Data Browser"];
 
 export default function AdminDashboard() {
+  const { logout, user } = useAuth();
   const [tab, setTab] = useState("Overview");
   const [states, setStates] = useState([]);
   const [districts, setDistricts] = useState([]);
@@ -28,17 +31,79 @@ export default function AdminDashboard() {
   const [selectedState, setSelectedState] = useState("");
   const [selectedDistrict, setSelectedDistrict] = useState("");
   const [selectedSubDistrict, setSelectedSubDistrict] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // Analytics data
+  const [analytics, setAnalytics] = useState({ totalVillages: 0, activeUsers: 0, totalRequests: 0 });
+  const [logs, setLogs] = useState([]);
+  const [users, setUsers] = useState([]);
+
+  // Fetch analytics
+  useEffect(() => {
+    const fetchAnalytics = async () => {
+      try {
+        const token = localStorage.getItem('authToken');
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/admin/analytics`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setAnalytics(data.data || {});
+        }
+      } catch (err) {
+        console.error('Failed to fetch analytics:', err);
+      }
+    };
+    fetchAnalytics();
+    const interval = setInterval(fetchAnalytics, 30000); // Update every 30 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fetch logs
+  useEffect(() => {
+    const fetchLogs = async () => {
+      try {
+        const token = localStorage.getItem('authToken');
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/admin/logs`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setLogs(data.data || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch logs:', err);
+      }
+    };
+    fetchLogs();
+  }, []);
+
+  // Fetch users
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const token = localStorage.getItem('authToken');
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/admin/users`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setUsers(data.data || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch users:', err);
+      }
+    };
+    fetchUsers();
+  }, []);
+
+  // Fetch states
   useEffect(() => {
     const loadStates = async () => {
       try {
         setError(null);
-        console.log("Loading states...");
         const data = await getStates();
-        console.log("States loaded:", data);
         setStates(data || []);
       } catch (error) {
         console.error("Failed to load states:", error);
@@ -48,6 +113,7 @@ export default function AdminDashboard() {
     loadStates();
   }, []);
 
+  // Fetch districts
   useEffect(() => {
     if (selectedState) {
       const loadDistricts = async () => {
@@ -68,6 +134,7 @@ export default function AdminDashboard() {
     }
   }, [selectedState]);
 
+  // Fetch sub-districts
   useEffect(() => {
     if (selectedDistrict) {
       const loadSubDistricts = async () => {
@@ -87,6 +154,7 @@ export default function AdminDashboard() {
     }
   }, [selectedDistrict]);
 
+  // Fetch villages
   useEffect(() => {
     if (selectedSubDistrict) {
       const loadVillages = async () => {
@@ -105,122 +173,226 @@ export default function AdminDashboard() {
   }, [selectedSubDistrict]);
 
   return (
-    <div style={{ fontFamily: "system-ui, sans-serif", color: "#111", maxWidth: 1100, margin: "0 auto" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.5rem" }}>
-        <div><h2 style={{ fontSize: 20, fontWeight: 500, margin: 0 }}>Admin Panel</h2><p style={{ fontSize: 13, color: "#666", margin: "4px 0 0" }}>All India Villages API</p></div>
-        <Badge label="● Live" type="success" />
-      </div>
-      <div style={{ display: "flex", gap: 4, borderBottom: "0.5px solid #e0e0e0", marginBottom: "1.5rem" }}>
-        {TABS.map(t => <button key={t} onClick={() => setTab(t)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, fontWeight: tab === t ? 500 : 400, color: tab === t ? "#111" : "#666", padding: "8px 16px", borderBottom: tab === t ? "2px solid #111" : "2px solid transparent", marginBottom: -1 }}>{t}</button>)}
-      </div>
-
-      {tab === "Overview" && (
-        <div>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: "1.25rem" }}>
-            {[["Total villages","6,19,225","#378ADD"],["Active users","1,897","#1D9E75"],["Today's requests","2.4M","#D85A30"],["Avg response time","47ms","#BA7517"]].map(([label,value,color]) => (
-              <div key={label} style={{ background: "#f5f5f5", borderRadius: 8, padding: "1rem", flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: 12, color: "#666", margin: "0 0 6px" }}>{label}</p>
-                <p style={{ fontSize: 26, fontWeight: 500, margin: 0, color }}>{value}</p>
-              </div>
-            ))}
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white shadow-sm border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Admin Panel</h1>
+            <p className="text-sm text-gray-600">All India Villages API</p>
           </div>
-          <Card>
-            <p style={{ fontSize: 14, fontWeight: 500, margin: "0 0 12px" }}>API requests — last 30 days</p>
-            <div style={{ height: 200 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={requestsData}><CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} /><XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} interval={4} /><YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={v => `${(v/1000).toFixed(0)}k`} /><Tooltip formatter={v => [v.toLocaleString(),"Requests"]} /><Area type="monotone" dataKey="requests" stroke="#378ADD" strokeWidth={2} fill="#E6F1FB" /></AreaChart>
-              </ResponsiveContainer>
+          <div className="flex items-center gap-4">
+            <Badge label="● Live" type="success" />
+            <div className="text-right text-sm">
+              <p className="font-medium text-gray-900">{user?.email || 'Admin'}</p>
+              <button
+                onClick={logout}
+                className="text-blue-600 hover:text-blue-800 text-xs mt-1"
+              >
+                Logout
+              </button>
             </div>
-          </Card>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }}>
-            <Card>
-              <p style={{ fontSize: 14, fontWeight: 500, margin: "0 0 12px" }}>Top states by village count</p>
-              <div style={{ height: 220 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={statesData} layout="vertical"><XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => `${(v/1000).toFixed(0)}k`} /><YAxis type="category" dataKey="state" width={110} tick={{ fontSize: 11 }} axisLine={false} /><Tooltip formatter={v => [v.toLocaleString(),"Villages"]} /><Bar dataKey="villages" fill="#378ADD" radius={[0,4,4,0]} barSize={16} /></BarChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
-            <Card>
-              <p style={{ fontSize: 14, fontWeight: 500, margin: "0 0 12px" }}>Users by plan</p>
-              <div style={{ height: 220, display: "flex", alignItems: "center" }}>
-                <ResponsiveContainer width="60%" height="100%">
-                  <PieChart><Pie data={planData} cx="50%" cy="50%" innerRadius={50} outerRadius={85} dataKey="value" paddingAngle={3}>{planData.map((_,i) => <Cell key={i} fill={COLORS[i]} />)}</Pie><Tooltip formatter={v => [v,"users"]} /></PieChart>
-                </ResponsiveContainer>
-                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
-                  {planData.map((p,i) => <div key={p.name} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: COLORS[i], flexShrink: 0 }} /><span style={{ color: "#666", flex: 1 }}>{p.name}</span><span style={{ fontWeight: 500 }}>{p.value}</span></div>)}
-                </div>
-              </div>
-            </Card>
           </div>
         </div>
-      )}
+      </header>
 
-      {tab === "API Logs" && (
-        <Card>
-          <p style={{ fontSize: 14, fontWeight: 500, margin: "0 0 16px" }}>Recent API logs</p>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-            <thead><tr style={{ borderBottom: "0.5px solid #e0e0e0" }}>{["Time","API Key","User","Endpoint","ms","Status"].map(h => <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontWeight: 500, color: "#666", fontSize: 11 }}>{h}</th>)}</tr></thead>
-            <tbody>{recentLogs.map((l,i) => <tr key={i} style={{ borderBottom: "0.5px solid #e0e0e0" }}><td style={{ padding: "8px 10px", fontFamily: "monospace" }}>{l.time}</td><td style={{ padding: "8px 10px", fontFamily: "monospace", color: "#666" }}>{l.key}</td><td style={{ padding: "8px 10px" }}>{l.user}</td><td style={{ padding: "8px 10px", fontFamily: "monospace", color: "#378ADD" }}>{l.endpoint}</td><td style={{ padding: "8px 10px" }}>{l.ms}</td><td style={{ padding: "8px 10px" }}><Badge label={l.status} type={l.status===200?"success":l.status===429?"warning":"danger"} /></td></tr>)}</tbody>
-          </table>
-        </Card>
-      )}
+      {/* Tabs */}
+      <div className="max-w-7xl mx-auto px-6 py-4">
+        <div className="flex gap-1 border-b border-gray-200 mb-6">
+          {TABS.map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-4 py-2 font-medium text-sm border-b-2 ${
+                tab === t
+                  ? 'border-gray-900 text-gray-900'
+                  : 'border-transparent text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
 
-      {tab === "Users" && (
-        <Card>
-          <p style={{ fontSize: 14, fontWeight: 500, margin: "0 0 16px" }}>Registered users</p>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead><tr style={{ borderBottom: "0.5px solid #e0e0e0" }}>{["Business","Email","Plan","Status"].map(h => <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontWeight: 500, color: "#666", fontSize: 11 }}>{h}</th>)}</tr></thead>
-            <tbody>{[["Flipkart Inc.","api@flipkart.com","Unlimited","Active"],["Razorpay Ltd.","dev@razorpay.com","Pro","Active"],["Meesho Pvt.","api@meesho.com","Pro","Pending"]].map(([name,email,plan,status],i) => <tr key={i} style={{ borderBottom: "0.5px solid #e0e0e0" }}><td style={{ padding: "10px", fontWeight: 500 }}>{name}</td><td style={{ padding: "10px", color: "#666" }}>{email}</td><td style={{ padding: "10px" }}><Badge label={plan} type="info" /></td><td style={{ padding: "10px" }}><Badge label={status} type={status==="Active"?"success":"warning"} /></td></tr>)}</tbody>
-          </table>
-        </Card>
-      )}
+        {/* Overview Tab */}
+        {tab === "Overview" && (
+          <div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              {[
+                { label: "Total villages", value: analytics.totalVillages?.toLocaleString() || "619,225", color: "#378ADD" },
+                { label: "Active users", value: analytics.activeUsers || "1,897", color: "#1D9E75" },
+                { label: "Today's requests", value: analytics.totalRequests?.toLocaleString() || "2.4M", color: "#D85A30" },
+                { label: "Avg response time", value: "47ms", color: "#BA7517" }
+              ].map(({ label, value, color }) => (
+                <div key={label} className="bg-gray-100 rounded-lg p-4">
+                  <p className="text-xs text-gray-600 mb-2">{label}</p>
+                  <p className="text-2xl font-bold" style={{ color }}>{value}</p>
+                </div>
+              ))}
+            </div>
 
-      {tab === "Data Browser" && (
-        <Card>
-          <p style={{ fontSize: 14, fontWeight: 500, margin: "0 0 16px" }}>Village data browser</p>
-          {error && <p style={{ color: "#d32f2f", fontSize: 13, marginBottom: 16, padding: "8px", background: "#ffebee", borderRadius: 4 }}>⚠️ Error: {error}</p>}
-          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-            <select
-              value={selectedState}
-              onChange={(e) => setSelectedState(e.target.value)}
-              style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "0.5px solid #ccc" }}>
-              <option value="">Select state... {states.length > 0 && `(${states.length})`}</option>
-              {states.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-            <select
-              value={selectedDistrict}
-              onChange={(e) => setSelectedDistrict(e.target.value)}
-              disabled={!selectedState}
-              style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "0.5px solid #ccc", opacity: !selectedState ? 0.5 : 1 }}>
-              <option value="">Select district... {selectedState && districts.length > 0 && `(${districts.length})`}</option>
-              {districts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </select>
-            <select
-              value={selectedSubDistrict}
-              onChange={(e) => setSelectedSubDistrict(e.target.value)}
-              disabled={!selectedDistrict}
-              style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "0.5px solid #ccc", opacity: !selectedDistrict ? 0.5 : 1 }}>
-              <option value="">Select sub-district... {selectedDistrict && subDistricts.length > 0 && `(${subDistricts.length})`}</option>
-              {subDistricts.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+            <Card>
+              <p className="font-medium mb-4">API requests — last 30 days</p>
+              <div style={{ height: 200 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={Array.from({ length: 30 }, (_, i) => ({
+                    date: `Apr ${i + 1}`,
+                    requests: Math.floor(Math.random() * 80000 + 20000)
+                  }))}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} interval={4} />
+                    <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                    <Tooltip formatter={v => v.toLocaleString()} />
+                    <Area type="monotone" dataKey="requests" stroke="#378ADD" strokeWidth={2} fill="#E6F1FB" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
           </div>
-          {loading && <p style={{ color: "#666", fontSize: 13 }}>Loading...</p>}
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead><tr style={{ borderBottom: "0.5px solid #e0e0e0" }}>{["Code", "Village"].map(h => <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontWeight: 500, color: "#666", fontSize: 11 }}>{h}</th>)}</tr></thead>
-            <tbody>
-              {villages.length > 0 ? (
-                villages.map((v, i) => <tr key={i} style={{ borderBottom: "0.5px solid #e0e0e0" }}>
-                  <td style={{ padding: "8px 10px", fontFamily: "monospace", fontSize: 12 }}>{v.code}</td>
-                  <td style={{ padding: "8px 10px" }}>{v.name}</td>
-                </tr>)
-              ) : (
-                <tr><td colSpan="2" style={{ padding: "16px", textAlign: "center", color: "#999" }}>Select a sub-district to view villages</td></tr>
-              )}
-            </tbody>
-          </table>
-        </Card>
-      )}
+        )}
+
+        {/* Users Tab */}
+        {tab === "Users" && (
+          <Card>
+            <p className="font-medium mb-4">Registered users</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-2 px-3 font-medium text-gray-700">Business</th>
+                    <th className="text-left py-2 px-3 font-medium text-gray-700">Email</th>
+                    <th className="text-left py-2 px-3 font-medium text-gray-700">Plan</th>
+                    <th className="text-left py-2 px-3 font-medium text-gray-700">Status</th>
+                    <th className="text-left py-2 px-3 font-medium text-gray-700">Joined</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.length > 0 ? (
+                    users.map(u => (
+                      <tr key={u.id} className="border-b border-gray-200 hover:bg-gray-50">
+                        <td className="py-3 px-3 font-medium">{u.businessName}</td>
+                        <td className="py-3 px-3 text-gray-600">{u.email}</td>
+                        <td className="py-3 px-3"><Badge label={u.planType} type="info" /></td>
+                        <td className="py-3 px-3"><Badge label={u.status} type={u.status === "ACTIVE" ? "success" : "warning"} /></td>
+                        <td className="py-3 px-3 text-gray-600">{new Date(u.createdAt).toLocaleDateString()}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="5" className="py-8 text-center text-gray-500">No users found</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
+
+        {/* API Logs Tab */}
+        {tab === "API Logs" && (
+          <Card>
+            <p className="font-medium mb-4">Recent API logs</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-2 px-3 font-medium text-gray-700">Time</th>
+                    <th className="text-left py-2 px-3 font-medium text-gray-700">API Key</th>
+                    <th className="text-left py-2 px-3 font-medium text-gray-700">User</th>
+                    <th className="text-left py-2 px-3 font-medium text-gray-700">Endpoint</th>
+                    <th className="text-left py-2 px-3 font-medium text-gray-700">Response (ms)</th>
+                    <th className="text-left py-2 px-3 font-medium text-gray-700">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {logs.length > 0 ? (
+                    logs.map(log => (
+                      <tr key={log.id} className="border-b border-gray-200 hover:bg-gray-50 text-xs">
+                        <td className="py-3 px-3">{new Date(log.createdAt).toLocaleTimeString()}</td>
+                        <td className="py-3 px-3 font-mono text-gray-600">{log.apiKey?.key?.slice(0, 10)}...****</td>
+                        <td className="py-3 px-3">{log.user?.businessName || 'Unknown'}</td>
+                        <td className="py-3 px-3 font-mono text-blue-600">{log.endpoint}</td>
+                        <td className="py-3 px-3">{log.responseTime}</td>
+                        <td className="py-3 px-3">
+                          <Badge
+                            label={log.statusCode}
+                            type={log.statusCode >= 200 && log.statusCode < 300 ? "success" : log.statusCode === 429 ? "warning" : "danger"}
+                          />
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="6" className="py-8 text-center text-gray-500">No logs found</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
+
+        {/* Data Browser Tab */}
+        {tab === "Data Browser" && (
+          <Card>
+            <p className="font-medium mb-4">Village data browser</p>
+            {error && <p className="text-red-600 text-sm mb-4">⚠️ Error: {error}</p>}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+              <select
+                value={selectedState}
+                onChange={(e) => setSelectedState(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select state... {states.length > 0 && `(${states.length})`}</option>
+                {states.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+              <select
+                value={selectedDistrict}
+                onChange={(e) => setSelectedDistrict(e.target.value)}
+                disabled={!selectedState}
+                className="px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              >
+                <option value="">Select district... {selectedState && districts.length > 0 && `(${districts.length})`}</option>
+                {districts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+              <select
+                value={selectedSubDistrict}
+                onChange={(e) => setSelectedSubDistrict(e.target.value)}
+                disabled={!selectedDistrict}
+                className="px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              >
+                <option value="">Select sub-district... {selectedDistrict && subDistricts.length > 0 && `(${subDistricts.length})`}</option>
+                {subDistricts.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+            {loading && <p className="text-gray-600 text-sm mb-4">Loading...</p>}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-2 px-3 font-medium text-gray-700">Code</th>
+                    <th className="text-left py-2 px-3 font-medium text-gray-700">Village</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {villages.length > 0 ? (
+                    villages.map((v, i) => (
+                      <tr key={i} className="border-b border-gray-200 hover:bg-gray-50">
+                        <td className="py-2 px-3 font-mono text-gray-600 text-xs">{v.code}</td>
+                        <td className="py-2 px-3">{v.name}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="2" className="py-8 text-center text-gray-500 text-sm">Select a sub-district to view villages</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }

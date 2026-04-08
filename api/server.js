@@ -168,16 +168,10 @@ app.get("/admin/analytics", authenticateJWT, async (req, res) => {
     const [totalVillages, activeUsers, totalRequests] = await Promise.all([
       prisma.village.count(),
       prisma.user.count({ where: { status: "ACTIVE" } }),
-      prisma.apiLog.count()</
+      prisma.apiLog.count()
     ]);
 
-    const topStates = await prisma.village.groupBy({
-      by: ["subDistrictId"],
-      _count: true,
-      take: 10,
-    });
-
-    res.json({ success: true, data: { totalVillages, activeUsers, totalRequests, topStates } });
+    res.json({ success: true, data: { totalVillages, activeUsers, totalRequests } });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
