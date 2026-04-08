@@ -269,6 +269,233 @@ app.get("/v1/autocomplete", authenticate, async (req, res) => {
   return success(suggestions, res, req);
 });
 
+// ===== B2B USER ENDPOINTS =====
+
+// Get B2B user dashboard stats
+app.get("/b2b/dashboard", authenticateJWT, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Get user's daily quota info
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { planType: true }
+    });
+
+    const today = new Date().toISOString().slice(0, 10);
+    const plans = { FREE: 1000, PREMIUM: 10000, PRO: 50000, UNLIMITED: 999999999 };
+    const dailyLimit = plans[user.planType] || 1000;
+
+    // Get today's usage
+    const todayUsage = await redis.get(`ratelimit:${userId}:${today}`) || 0;
+
+    // Get user's API logs for usage stats
+    const logs = await prisma.apiLog.findMany({
+      where: { userId },
+      select: { responseTime: true, createdAt: true, statusCode: true },
+      orderBy: { createdAt: "desc" },
+      take: 1000
+    });
+
+    const totalRequests = logs.length;
+    const avgResponseTime = logs.length > 0
+      ? Math.round(logs.reduce((a, b) => a + b.responseTime, 0) / logs.length)
+      : 0;
+    const successRate = logs.length > 0
+      ? Math.round((logs.filter(l => l.statusCode >= 200 && l.statusCode < 300).length / logs.length) * 100)
+      : 0;
+
+    // Last 7 days usage chart data
+    const last7Days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().slice(0, 10);
+      const count = logs.filter(l => l.createdAt.toISOString().slice(0, 10) === dateStr).length;
+      last7Days.push({ date: dateStr, requests: count });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        plan: user.planType,
+        dailyLimit,
+        todayUsage: parseInt(todayUsage) || 0,
+        totalRequests,
+        avgResponseTime,
+        successRate,
+        chartData: last7Days
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// List user's API keys
+app.get("/b2b/apikeys", authenticateJWT, async (req, res) => {
+  try {
+    const keys = await prisma.apiKey.findMany({
+      where: { userId: req.user.id },
+      select: { id: true, name: true, key: true, isActive: true, createdAt: true, lastUsedAt: true },
+      orderBy: { createdAt: "desc" }
+    });
+
+    res.json({
+      success: true,
+      data: keys.map(k => ({
+        ...k,
+        key: k.key.slice(0, 10) + "..." + k.key.slice(-4) // Mask key
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Create new API key
+app.post("/b2b/apikeys", authenticateJWT, async (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ success: false, error: "Key name required" });
+
+  try {
+    // Generate random key and secret
+    const key = "ak_" + randomUUID().replace(/-/g, "").slice(0, 28);
+    const secret = "as_" + randomUUID().replace(/-/g, "").slice(0, 28);
+    const secretHash = await bcrypt.hash(secret, 10);
+
+    const apiKey = await prisma.apiKey.create({
+      data: {
+        name,
+        key,
+        secretHash,
+        userId: req.user.id,
+        isActive: true
+      }
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: apiKey.id,
+        name: apiKey.name,
+        key, // Show full key only once
+        secret, // Show full secret only once
+        createdAt: apiKey.createdAt,
+        warning: "Store the API key and secret securely. You won't see the secret again!"
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Revoke API key
+app.delete("/b2b/apikeys/:keyId", authenticateJWT, async (req, res) => {
+  try {
+    const keyId = parseInt(req.params.keyId);
+
+    // Verify ownership
+    const apiKey = await prisma.apiKey.findUnique({ where: { id: keyId } });
+    if (!apiKey || apiKey.userId !== req.user.id) {
+      return res.status(403).json({ success: false, error: "Not authorized" });
+    }
+
+    await prisma.apiKey.update({
+      where: { id: keyId },
+      data: { isActive: false }
+    });
+
+    res.json({ success: true, data: { message: "API key revoked" } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Regenerate API key secret
+app.post("/b2b/apikeys/:keyId/regenerate", authenticateJWT, async (req, res) => {
+  try {
+    const keyId = parseInt(req.params.keyId);
+
+    // Verify ownership
+    const apiKey = await prisma.apiKey.findUnique({ where: { id: keyId } });
+    if (!apiKey || apiKey.userId !== req.user.id) {
+      return res.status(403).json({ success: false, error: "Not authorized" });
+    }
+
+    const newSecret = "as_" + randomUUID().replace(/-/g, "").slice(0, 28);
+    const newSecretHash = await bcrypt.hash(newSecret, 10);
+
+    await prisma.apiKey.update({
+      where: { id: keyId },
+      data: { secretHash: newSecretHash }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        message: "Secret regenerated",
+        secret: newSecret,
+        warning: "Store the new secret securely. The old secret is now invalid!"
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get API key usage statistics
+app.get("/b2b/apikeys/:keyId/usage", authenticateJWT, async (req, res) => {
+  try {
+    const keyId = parseInt(req.params.keyId);
+
+    // Verify ownership
+    const apiKey = await prisma.apiKey.findUnique({
+      where: { id: keyId },
+      include: { apiLogs: { select: { responseTime: true, createdAt: true, endpoint: true, statusCode: true } } }
+    });
+
+    if (!apiKey || apiKey.userId !== req.user.id) {
+      return res.status(403).json({ success: false, error: "Not authorized" });
+    }
+
+    const logs = apiKey.apiLogs;
+    const totalRequests = logs.length;
+    const avgResponseTime = logs.length > 0
+      ? Math.round(logs.reduce((a, b) => a + b.responseTime, 0) / logs.length)
+      : 0;
+
+    // Group by endpoint
+    const endpointStats = {};
+    logs.forEach(log => {
+      if (!endpointStats[log.endpoint]) {
+        endpointStats[log.endpoint] = { count: 0, avgTime: 0, totalTime: 0 };
+      }
+      endpointStats[log.endpoint].count++;
+      endpointStats[log.endpoint].totalTime += log.responseTime;
+    });
+
+    Object.keys(endpointStats).forEach(endpoint => {
+      endpointStats[endpoint].avgTime = Math.round(
+        endpointStats[endpoint].totalTime / endpointStats[endpoint].count
+      );
+    });
+
+    res.json({
+      success: true,
+      data: {
+        keyName: apiKey.name,
+        totalRequests,
+        avgResponseTime,
+        endpointStats,
+        lastUsed: apiKey.lastUsedAt
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.use((err, req, res, _next) => {
   console.error(err);
   res.status(500).json({ success: false, error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred" }});

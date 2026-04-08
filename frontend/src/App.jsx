@@ -29,6 +29,10 @@ export default function App() {
           path="/b2b"
           element={<ProtectedRoute><B2BDashboard /></ProtectedRoute>}
         />
+        <Route
+          path="/dashboard"
+          element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>}
+        />
 
         {/* Redirects */}
         <Route path="/" element={<Navigate to={isAuthenticated ? "/admin" : "/login"} />} />
