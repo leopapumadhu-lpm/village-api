@@ -1,13 +1,18 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 const API_KEY = import.meta.env.VITE_API_KEY;
 
+console.log('🔧 API Config:', { API_URL, API_KEY: API_KEY ? '✓ Set' : '✗ Missing' });
+
 if (!API_KEY) {
-  console.warn('⚠️  VITE_API_KEY not configured in .env.local');
+  console.error('❌ VITE_API_KEY not configured in .env.local');
 }
 
 export async function apiCall(endpoint, options = {}) {
+  const url = `${API_URL}/v1${endpoint}`;
+  console.log(`📡 API Call: ${url}`);
+
   try {
-    const response = await fetch(`${API_URL}/v1${endpoint}`, {
+    const response = await fetch(url, {
       ...options,
       headers: {
         'x-api-key': API_KEY,
@@ -22,9 +27,10 @@ export async function apiCall(endpoint, options = {}) {
     }
 
     const data = await response.json();
+    console.log(`✅ Success:`, data.data?.length || data.data);
     return data.data;
   } catch (error) {
-    console.error('API call failed:', error);
+    console.error(`❌ API Error on ${endpoint}:`, error.message);
     throw error;
   }
 }

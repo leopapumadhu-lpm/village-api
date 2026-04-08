@@ -30,14 +30,19 @@ export default function AdminDashboard() {
   const [selectedSubDistrict, setSelectedSubDistrict] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const loadStates = async () => {
       try {
+        setError(null);
+        console.log("Loading states...");
         const data = await getStates();
+        console.log("States loaded:", data);
         setStates(data || []);
       } catch (error) {
         console.error("Failed to load states:", error);
+        setError(error.message);
       }
     };
     loadStates();
@@ -174,12 +179,13 @@ export default function AdminDashboard() {
       {tab === "Data Browser" && (
         <Card>
           <p style={{ fontSize: 14, fontWeight: 500, margin: "0 0 16px" }}>Village data browser</p>
+          {error && <p style={{ color: "#d32f2f", fontSize: 13, marginBottom: 16, padding: "8px", background: "#ffebee", borderRadius: 4 }}>⚠️ Error: {error}</p>}
           <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
             <select
               value={selectedState}
               onChange={(e) => setSelectedState(e.target.value)}
               style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "0.5px solid #ccc" }}>
-              <option value="">Select state...</option>
+              <option value="">Select state... {states.length > 0 && `(${states.length})`}</option>
               {states.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
             <select
@@ -187,7 +193,7 @@ export default function AdminDashboard() {
               onChange={(e) => setSelectedDistrict(e.target.value)}
               disabled={!selectedState}
               style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "0.5px solid #ccc", opacity: !selectedState ? 0.5 : 1 }}>
-              <option value="">Select district...</option>
+              <option value="">Select district... {selectedState && districts.length > 0 && `(${districts.length})`}</option>
               {districts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
             <select
@@ -195,7 +201,7 @@ export default function AdminDashboard() {
               onChange={(e) => setSelectedSubDistrict(e.target.value)}
               disabled={!selectedDistrict}
               style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "0.5px solid #ccc", opacity: !selectedDistrict ? 0.5 : 1 }}>
-              <option value="">Select sub-district...</option>
+              <option value="">Select sub-district... {selectedDistrict && subDistricts.length > 0 && `(${subDistricts.length})`}</option>
               {subDistricts.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
