@@ -5,6 +5,8 @@ import rateLimit from "express-rate-limit";
 import { PrismaClient } from "@prisma/client";
 import { createClient } from "redis";
 import { randomUUID } from "crypto";
+import jwt from "jsonwebtoken";
+import bcrypt from "bcrypt";
 
 const app = express();
 const prisma = new PrismaClient();
@@ -60,7 +62,143 @@ function success(data, res, req) {
   });
 }
 
+// JWT Authentication Middleware
+function authenticateJWT(req, res, next) {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ success: false, error: "No token provided" });
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
+    req.user = decoded;
+    next();
+  } catch (error) {
+    res.status(403).json({ success: false, error: "Invalid token" });
+  }
+}
+
 app.use((req, _res, next) => { req._startTime = Date.now(); next(); });
+
+// ===== AUTH ENDPOINTS =====
+app.post("/admin/login", async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ success: false, error: "Email and password required" });
+
+  try {
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) return res.status(401).json({ success: false, error: "Invalid credentials" });
+
+    const isValid = await bcrypt.compare(password, user.passwordHash || "");
+    if (!isValid) return res.status(401).json({ success: false, error: "Invalid credentials" });
+    if (user.status !== "ACTIVE") return res.status(403).json({ success: false, error: "Account not active" });
+
+    const token = jwt.sign({ id: user.id, email: user.email, role: "admin" }, process.env.JWT_SECRET || "your-secret-key", { expiresIn: "24h" });
+    res.json({ success: true, data: { token, user: { id: user.id, email: user.email, businessName: user.businessName } } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post("/auth/register", async (req, res) => {
+  const { email, businessName, phone, gstNumber, password } = req.body;
+  if (!email || !businessName || !password) return res.status(400).json({ success: false, error: "Missing required fields" });
+
+  try {
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) return res.status(409).json({ success: false, error: "User already exists" });
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = await prisma.user.create({
+      data: { email, businessName, passwordHash, status: "PENDING_APPROVAL" },
+    });
+
+    res.status(201).json({ success: true, data: { message: "Registration successful. Admin approval pending.", email: user.email } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ===== ADMIN ENDPOINTS =====
+app.get("/admin/users", authenticateJWT, async (req, res) => {
+  if (req.user.role !== "admin") return res.status(403).json({ success: false, error: "Admin only" });
+
+  try {
+    const users = await prisma.user.findMany({
+      select: { id: true, email: true, businessName: true, planType: true, status: true, createdAt: true },
+      orderBy: { createdAt: "desc" }
+    });
+    res.json({ success: true, data: users });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.patch("/admin/users/:id/approve", authenticateJWT, async (req, res) => {
+  if (req.user.role !== "admin") return res.status(403).json({ success: false, error: "Admin only" });
+
+  try {
+    const user = await prisma.user.update({
+      where: { id: parseInt(req.params.id) },
+      data: { status: "ACTIVE" },
+    });
+    res.json({ success: true, data: user });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.patch("/admin/users/:id/plan", authenticateJWT, async (req, res) => {
+  if (req.user.role !== "admin") return res.status(403).json({ success: false, error: "Admin only" });
+  const { planType } = req.body;
+
+  try {
+    const user = await prisma.user.update({
+      where: { id: parseInt(req.params.id) },
+      data: { planType },
+    });
+    res.json({ success: true, data: user });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/admin/analytics", authenticateJWT, async (req, res) => {
+  if (req.user.role !== "admin") return res.status(403).json({ success: false, error: "Admin only" });
+
+  try {
+    const [totalVillages, activeUsers, totalRequests] = await Promise.all([
+      prisma.village.count(),
+      prisma.user.count({ where: { status: "ACTIVE" } }),
+      prisma.apiLog.count()</
+    ]);
+
+    const topStates = await prisma.village.groupBy({
+      by: ["subDistrictId"],
+      _count: true,
+      take: 10,
+    });
+
+    res.json({ success: true, data: { totalVillages, activeUsers, totalRequests, topStates } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/admin/logs", authenticateJWT, async (req, res) => {
+  if (req.user.role !== "admin") return res.status(403).json({ success: false, error: "Admin only" });
+
+  try {
+    const logs = await prisma.apiLog.findMany({
+      include: { user: { select: { businessName: true, email: true } }, apiKey: { select: { key: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
+    res.json({ success: true, data: logs });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ===== VILLAGE API ENDPOINTS =====
 
 app.get("/v1/states", authenticate, async (req, res) => {
   const cached = await redis.get("states:all");
