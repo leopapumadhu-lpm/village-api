@@ -1,34 +1,88 @@
 {
-  "name": "frontend",
+  "name": "village-api-frontend",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
+  "description": "Village API Admin Dashboard & B2B Portal",
+  "author": "Village API Team",
+  "license": "MIT",
   "scripts": {
     "dev": "vite",
+    "dev:host": "vite --host",
     "build": "vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
+    "build:staging": "vite build --mode staging",
+    "build:prod": "vite build --mode production",
+    "preview": "vite preview",
+    "preview:host": "vite preview --host",
+    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
+    "lint:fix": "eslint . --ext js,jsx --fix",
+    "format": "prettier --write \"src/**/*.{js,jsx,css,md}\"",
+    "format:check": "prettier --check \"src/**/*.{js,jsx,css,md}\"",
+    "test": "vitest --passWithNoTests",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "type-check": "[ -f tsconfig.json ] && tsc --noEmit || [ ! -f tsconfig.json ]",
+    "clean": "rm -rf dist node_modules/.vite",
+    "prebuild": "npm run type-check",
+    "postbuild": "echo '✅ Build complete!'",
+    "analyze": "vite build --mode analyze",
+    "serve": "vite preview"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.96.2",
+    "axios": "^1.8.4",
+    "date-fns": "^4.1.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-hot-toast": "^2.5.2",
     "react-router-dom": "^7.14.0",
     "recharts": "^3.8.1",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@tailwindcss/typography": "^0.5.16",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^22.15.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "@vitest/ui": "^3.1.3",
     "autoprefixer": "^10.4.27",
+    "cssnano": "^7.1.5",
     "eslint": "^9.39.4",
+    "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
+    "happy-dom": "^17.4.4",
     "postcss": "^8.5.9",
-    "tailwindcss": "^4.2.2",
-    "vite": "^8.0.4"
+    "prettier": "^3.5.3",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.4",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "volta": {
+    "node": "18.19.0",
+    "npm": "10.2.4"
   }
 }

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        line-height: 1.6;
+        color: #333;
+      }
+      .container {
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #f9f9f9;
+      }
+      .header {
+        background: linear-gradient(135deg, #378add 0%, #1d9e75 100%);
+        color: white;
+        padding: 30px;
+        text-align: center;
+        border-radius: 8px 8px 0 0;
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 24px;
+      }
+      .content {
+        background-color: white;
+        padding: 30px;
+        border-radius: 0 0 8px 8px;
+      }
+      .invoice-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 2px solid #378add;
+        padding-bottom: 15px;
+        margin-bottom: 20px;
+      }
+      .invoice-details {
+        background-color: #f5f5f5;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 20px 0;
+      }
+      .invoice-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid #eee;
+      }
+      .invoice-row.total {
+        font-weight: bold;
+        font-size: 16px;
+        border-bottom: 2px solid #378add;
+      }
+      .summary-table {
+        width: 100%;
+        margin: 20px 0;
+        border-collapse: collapse;
+      }
+      .summary-table td {
+        padding: 10px;
+        border-bottom: 1px solid #eee;
+      }
+      .summary-table .label {
+        text-align: right;
+        font-weight: bold;
+        width: 50%;
+      }
+      .button {
+        display: inline-block;
+        background-color: #378add;
+        color: white;
+        padding: 12px 30px;
+        text-decoration: none;
+        border-radius: 5px;
+        font-weight: bold;
+        margin: 20px 0;
+      }
+      .footer {
+        text-align: center;
+        padding: 20px;
+        font-size: 12px;
+        color: #666;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>📋 Monthly Invoice</h1>
+      </div>
+      <div class="content">
+        <div class="invoice-header">
+          <div>
+            <h2 style="margin: 0; font-size: 18px;">INVOICE</h2>
+            <p style="margin: 5px 0; color: #666;">{{invoiceNumber}}</p>
+          </div>
+          <div style="text-align: right;">
+            <p style="margin: 0;"><strong>Issued:</strong> {{issuedDate}}</p>
+            <p style="margin: 0;"><strong>Due:</strong> {{dueDate}}</p>
+          </div>
+        </div>
+
+        <p><strong>Bill To:</strong> {{businessName}}</p>
+
+        <table class="summary-table">
+          <tr>
+            <td class="label">Service Period:</td>
+            <td>{{issuedDate}} to {{dueDate}}</td>
+          </tr>
+          <tr>
+            <td class="label">Plan Type:</td>
+            <td>{{planType}}</td>
+          </tr>
+        </table>
+
+        <h3 style="margin-top: 30px; margin-bottom: 15px;">Invoice Summary</h3>
+        <div class="invoice-details">
+          <div class="invoice-row">
+            <span>Subtotal:</span>
+            <span>{{amount}}</span>
+          </div>
+          <div class="invoice-row">
+            <span>Tax:</span>
+            <span>{{tax}}</span>
+          </div>
+          <div class="invoice-row total">
+            <span>Total Amount Due:</span>
+            <span>{{total}}</span>
+          </div>
+        </div>
+
+        <p style="text-align: center;">
+          <a href="{{invoiceUrl}}" class="button">Download Full Invoice (PDF)</a>
+        </p>
+
+        <div style="background-color: #f0f8ff; padding: 15px; border-radius: 5px; margin: 20px 0;">
+          <p style="margin: 0;"><strong>Payment Status:</strong> PAID</p>
+          <p style="margin: 5px 0; color: #666;">Thank you for your payment.</p>
+        </div>
+
+        <p>
+          If you have any questions about this invoice or need to update your billing information, please contact our billing team at {{supportEmail}}.
+        </p>
+      </div>
+      <div class="footer">
+        <p>© 2026 Village API. All rights reserved.</p>
+        <p>Support: {{supportEmail}}</p>
+      </div>
+    </div>
+  </body>
+</html>

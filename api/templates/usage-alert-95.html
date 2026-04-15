@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        line-height: 1.6;
+        color: #333;
+      }
+      .container {
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #f9f9f9;
+      }
+      .header {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        color: white;
+        padding: 30px;
+        text-align: center;
+        border-radius: 8px 8px 0 0;
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 24px;
+      }
+      .content {
+        background-color: white;
+        padding: 30px;
+        border-radius: 0 0 8px 8px;
+      }
+      .critical-alert {
+        background-color: #f8d7da;
+        border: 2px solid #dc3545;
+        padding: 15px;
+        margin: 20px 0;
+        border-radius: 3px;
+      }
+      .progress-bar {
+        background-color: #e0e0e0;
+        height: 20px;
+        border-radius: 10px;
+        overflow: hidden;
+        margin: 10px 0;
+      }
+      .progress-fill {
+        background-color: #dc3545;
+        height: 100%;
+        width: 95%;
+      }
+      .button.upgrade {
+        display: inline-block;
+        background-color: #dc3545;
+        color: white;
+        padding: 12px 30px;
+        text-decoration: none;
+        border-radius: 5px;
+        font-weight: bold;
+        margin: 20px 0;
+      }
+      .footer {
+        text-align: center;
+        padding: 20px;
+        font-size: 12px;
+        color: #666;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🚨 CRITICAL: Quota Almost Exceeded!</h1>
+      </div>
+      <div class="content">
+        <p>Hello {{businessName}},</p>
+        <p><strong>URGENT: Your API usage is at 95% of your daily limit!</strong></p>
+
+        <div class="critical-alert">
+          <strong style="font-size: 16px;">Current Usage: {{usagePercentage}}%</strong>
+          <div class="progress-bar">
+            <div class="progress-fill"></div>
+          </div>
+          <p style="margin: 5px 0; color: #842029;">
+            At 100%, all API requests will be rejected until your quota resets.
+          </p>
+        </div>
+
+        <p>
+          <strong>Your quota resets at: {{resetTime}}</strong>
+        </p>
+
+        <p>We recommend one of the following actions:</p>
+        <ul>
+          <li><strong>Upgrade immediately</strong> to a higher plan for increased limits</li>
+          <li>Stop or reduce API requests to preserve quota</li>
+          <li>Contact support if you need a temporary quota increase</li>
+        </ul>
+
+        <p style="text-align: center;">
+          <a href="{{dashboardUrl}}" class="button upgrade">Upgrade Your Plan Now</a>
+        </p>
+
+        <p>
+          <strong>Current Plan:</strong> {{planType}}<br />
+          If you need assistance, our support team is standing by.
+        </p>
+      </div>
+      <div class="footer">
+        <p>© 2026 Village API. All rights reserved.</p>
+        <p>Support: {{supportEmail}}</p>
+      </div>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        line-height: 1.6;
+        color: #333;
+      }
+      .container {
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #f9f9f9;
+      }
+      .header {
+        background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
+        color: white;
+        padding: 30px;
+        text-align: center;
+        border-radius: 8px 8px 0 0;
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 24px;
+      }
+      .content {
+        background-color: white;
+        padding: 30px;
+        border-radius: 0 0 8px 8px;
+      }
+      .alert-box {
+        background-color: #fff3cd;
+        border-left: 4px solid #ff9800;
+        padding: 15px;
+        margin: 20px 0;
+        border-radius: 3px;
+      }
+      .progress-bar {
+        background-color: #e0e0e0;
+        height: 20px;
+        border-radius: 10px;
+        overflow: hidden;
+        margin: 10px 0;
+      }
+      .progress-fill {
+        background-color: #ff9800;
+        height: 100%;
+        width: 80%;
+      }
+      .button {
+        display: inline-block;
+        background-color: #378add;
+        color: white;
+        padding: 12px 30px;
+        text-decoration: none;
+        border-radius: 5px;
+        font-weight: bold;
+        margin: 20px 0;
+      }
+      .footer {
+        text-align: center;
+        padding: 20px;
+        font-size: 12px;
+        color: #666;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>⚠️ Heads Up!</h1>
+      </div>
+      <div class="content">
+        <p>Hello {{businessName}},</p>
+        <p>Your API usage is approaching your daily limit!</p>
+
+        <div class="alert-box">
+          <strong>Current Usage: {{usagePercentage}}%</strong>
+          <div class="progress-bar">
+            <div class="progress-fill"></div>
+          </div>
+          <p style="margin: 0;">Your {{planType}} plan allows a certain number of requests per day.</p>
+        </div>
+
+        <p>When you reach 100%, all requests will be throttled until your quota resets at {{resetTime}}.</p>
+
+        <p>To avoid any disruptions, you can:</p>
+        <ul>
+          <li>Upgrade to a higher plan with more requests</li>
+          <li>Optimize your current usage patterns</li>
+          <li>Contact us to discuss your needs</li>
+        </ul>
+
+        <p style="text-align: center;">
+          <a href="{{dashboardUrl}}" class="button">View Your Dashboard</a>
+        </p>
+      </div>
+      <div class="footer">
+        <p>© 2026 Village API. All rights reserved.</p>
+        <p>Support: {{supportEmail}}</p>
+      </div>
+    </div>
+  </body>
+</html>

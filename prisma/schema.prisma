@@ -1,137 +1,32 @@
-// All India Villages API — Prisma Schema
-generator client {
-  provider = "prisma-client-js"
+model WebhookEndpoint {
+  id             Int                 @id @default(autoincrement())
+  organizationId String
+  url            String
+  secret         String
+  events         String              // JSON string
+  description    String?
+  isActive       Boolean             @default(true)
+  isDeleted      Boolean             @default(false)
+  deletedAt      DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  deliveryLogs   WebhookDeliveryLog[]
 }
 
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-model Country {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique
-  code      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  states    State[]
-}
-
-model State {
-  id         Int               @id @default(autoincrement())
-  code       String            @unique
-  name       String
-  countryId  Int
-  createdAt  DateTime          @default(now())
-  updatedAt  DateTime          @updatedAt
-  country    Country           @relation(fields: [countryId], references: [id])
-  districts  District[]
-  userAccess UserStateAccess[]
-}
-
-model District {
-  id           Int           @id @default(autoincrement())
-  code         String
-  name         String
-  stateId      Int
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  state        State         @relation(fields: [stateId], references: [id])
-  subDistricts SubDistrict[]
-  @@unique([code, stateId])
-  @@index([stateId])
-}
-
-model SubDistrict {
-  id         Int       @id @default(autoincrement())
-  code       String
-  name       String
-  districtId Int
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  district   District  @relation(fields: [districtId], references: [id])
-  villages   Village[]
-  @@unique([code, districtId])
-  @@index([districtId])
-}
-
-model Village {
-  id            Int         @id @default(autoincrement())
-  code          String      @unique
-  name          String
-  subDistrictId Int
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  subDistrict   SubDistrict @relation(fields: [subDistrictId], references: [id])
-  @@index([subDistrictId])
-  @@index([name])
-}
-
-enum PlanType {
-  FREE
-  PREMIUM
-  PRO
-  UNLIMITED
-}
-
-enum UserStatus {
-  PENDING_APPROVAL
-  ACTIVE
-  SUSPENDED
-}
-
-model User {
-  id           Int               @id @default(autoincrement())
-  email        String            @unique
-  businessName String
-  passwordHash String
-  planType     PlanType          @default(FREE)
-  status       UserStatus        @default(PENDING_APPROVAL)
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  apiKeys      ApiKey[]
-  apiLogs      ApiLog[]
-  stateAccess  UserStateAccess[]
-}
-
-model ApiKey {
-  id         Int       @id @default(autoincrement())
-  name       String
-  key        String    @unique
-  secretHash String
-  userId     Int
-  isActive   Boolean   @default(true)
-  lastUsedAt DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  user       User      @relation(fields: [userId], references: [id])
-  apiLogs    ApiLog[]
-  @@index([key])
-}
-
-model UserStateAccess {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  stateId   Int
-  grantedAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id])
-  state     State    @relation(fields: [stateId], references: [id])
-  @@unique([userId, stateId])
-}
-
-model ApiLog {
-  id           Int      @id @default(autoincrement())
-  apiKeyId     Int
-  userId       Int
-  endpoint     String
-  method       String   @default("GET")
-  statusCode   Int
-  responseTime Int
-  ipAddress    String?
-  createdAt    DateTime @default(now())
-  apiKey       ApiKey   @relation(fields: [apiKeyId], references: [id])
-  user         User     @relation(fields: [userId], references: [id])
-  @@index([userId, createdAt])
+model WebhookDeliveryLog {
+  id                Int              @id @default(autoincrement())
+  webhookEndpointId Int
+  webhookEndpoint   WebhookEndpoint  @relation(fields: [webhookEndpointId], references: [id])
+  eventType         String
+  payload           Json
+  status            String           // PENDING, SUCCESS, FAILED
+  statusCode        Int?
+  responseBody      String?
+  responseTime      Int?             // in milliseconds
+  retryCount        Int              @default(0)
+  createdAt         DateTime         @default(now())
+  
+  @@index([webhookEndpointId])
+  @@index([status])
   @@index([createdAt])
-  @@index([apiKeyId])
 }

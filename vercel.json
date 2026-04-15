@@ -9,18 +9,21 @@
     { "src": "api/server.js", "use": "@vercel/node" }
   ],
   "routes": [
+    { "src": "/api-docs/(.*)", "dest": "api/server.js" },
+    { "src": "/api-spec", "dest": "api/server.js" },
+    { "src": "/health", "dest": "api/server.js" },
     { "src": "/api/(.*)", "dest": "api/server.js" },
     { "src": "/admin/(.*)", "dest": "api/server.js" },
     { "src": "/auth/(.*)", "dest": "api/server.js" },
     { "src": "/b2b/(.*)", "dest": "api/server.js" },
     { "src": "/v1/(.*)", "dest": "api/server.js" },
-    { "src": "/(.*)", "dest": "frontend/dist/$1", "status": 404 }
+    { "src": "/payments/(.*)", "dest": "api/server.js" },
+    { "src": "/teams/(.*)", "dest": "api/server.js" },
+    { "src": "/docs", "dest": "api/server.js" },
+    { "src": "/(.*)", "dest": "frontend/dist/$1" }
   ],
   "env": {
-    "DATABASE_URL": "@database_url",
-    "REDIS_URL": "@redis_url",
-    "JWT_SECRET": "@jwt_secret",
-    "PORT": "3000"
+    "NODE_ENV": "production"
   },
   "functions": {
     "api/server.js": {

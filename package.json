@@ -1,10 +1,17 @@
 {
   "name": "village-api",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "All India Villages API - 619,225 villages indexed",
+  "main": "api/server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node api/server.js",
+    "dev": "node --watch api/server.js",
+    "predeploy:check": "node scripts/predeploy-check.js",
+    "postinstall": "prisma generate",
+    "lint": "node scripts/lint.js",
+    "lint:eslint": "npx eslint api/**/*.js",
+    "lint:fix": "npx eslint api/**/*.js --fix",
+    "format": "npx prettier --write \"api/**/*.js\""
   },
   "keywords": [],
   "author": "",
@@ -12,13 +19,33 @@
   "type": "module",
   "dependencies": {
     "@prisma/client": "^5.22.0",
+    "axios": "^1.15.0",
     "bcrypt": "^6.0.0",
+    "bull": "^4.16.5",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
+    "csurf": "^1.11.0",
+    "csv-writer": "^1.6.0",
+    "dotenv": "^17.4.1",
     "express": "^5.2.1",
     "express-rate-limit": "^8.3.2",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.0",
+    "nodemailer": "^8.0.5",
     "prisma": "^5.22.0",
-    "redis": "^5.11.0"
+    "redis": "^5.11.0",
+    "stripe": "^22.0.1",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
+    "tailwindcss": "^3.4.19"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^1.4.1",
+    "@eslint/js": "^8.57.1",
+    "eslint": "^8.57.1",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1"
   }
 }
