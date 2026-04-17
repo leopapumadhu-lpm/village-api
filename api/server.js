@@ -1,4 +1,8 @@
 import express from 'express';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import fs from 'fs';
+
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -1307,6 +1311,20 @@ async function startServer() {
       console.log('  API Secret: as_demo123456789012345678901234');
       console.log('  Demo Login: demo@villageapi.com / Demo@123456');
     }
+  });
+}
+
+
+// Serve frontend
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const frontendDist = join(__dirname, '../frontend/dist');
+if (fs.existsSync(frontendDist)) {
+  app.use(express.static(frontendDist));
+  app.get('*', (req, res, next) => {
+    const skip = ['/api','/v1','/auth','/admin','/health','/b2b','/payments','/teams'];
+    if (skip.some(p => req.path.startsWith(p))) return next();
+    res.sendFile(join(frontendDist, 'index.html'));
   });
 }
 
