@@ -18,93 +18,293 @@ import analyticsRoutes from './routes/analytics.js';
 import { specs } from './swagger.js';
 import { getDocsPage } from './docs.js';
 
-// CSRF Protection (for state-changing operations)
+// In-memory cache fallback when Redis is not available
+class MemoryCache {
+  constructor() {
+    this.cache = new Map();
+    this.timers = new Map();
+  }
 
-// Validate required environment variables
-const requiredEnvVars = ['DATABASE_URL', 'REDIS_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET'];
-const missingEnvVars = requiredEnvVars.filter((envVar) => !process.env[envVar]);
-if (missingEnvVars.length > 0) {
-  console.error('❌ Missing required environment variables:', missingEnvVars.join(', '));
-  process.exit(1);
+  async get(key) {
+    return this.cache.get(key) || null;
+  }
+
+  async set(key, value) {
+    this.cache.set(key, value);
+    return true;
+  }
+
+  async setEx(key, seconds, value) {
+    this.cache.set(key, value);
+    if (this.timers.has(key)) {
+      clearTimeout(this.timers.get(key));
+    }
+    const timer = setTimeout(() => {
+      this.cache.delete(key);
+      this.timers.delete(key);
+    }, seconds * 1000);
+    this.timers.set(key, timer);
+    return true;
+  }
+
+  async ping() {
+    return 'PONG';
+  }
+
+  async quit() {
+    this.cache.clear();
+    this.timers.forEach(timer => clearTimeout(timer));
+    this.timers.clear();
+  }
+
+  on() {}
 }
 
+// In-memory database fallback with expanded demo data
+class MemoryDB {
+  constructor() {
+    this.users = new Map();
+    this.apiKeys = new Map();
+    this.apiLogs = [];
+    
+    // Expanded village data - multiple states
+    this.villages = [
+      // Andhra Pradesh - Anantapur
+      { id: 1, code: '501001001', name: 'Adivi Thanda', subDistrictId: 1, subDistrict: { name: 'Anantapur', district: { name: 'Anantapur', state: { name: 'Andhra Pradesh' } } } },
+      { id: 2, code: '501001002', name: 'Gorantla', subDistrictId: 1, subDistrict: { name: 'Anantapur', district: { name: 'Anantapur', state: { name: 'Andhra Pradesh' } } } },
+      { id: 3, code: '501001003', name: 'Kadiri', subDistrictId: 1, subDistrict: { name: 'Anantapur', district: { name: 'Anantapur', state: { name: 'Andhra Pradesh' } } } },
+      { id: 4, code: '501001004', name: 'Hindupur', subDistrictId: 1, subDistrict: { name: 'Anantapur', district: { name: 'Anantapur', state: { name: 'Andhra Pradesh' } } } },
+      { id: 5, code: '501001005', name: 'Tadipatri', subDistrictId: 1, subDistrict: { name: 'Anantapur', district: { name: 'Anantapur', state: { name: 'Andhra Pradesh' } } } },
+      { id: 6, code: '501002001', name: 'Dharmavaram', subDistrictId: 2, subDistrict: { name: 'Dharmavaram', district: { name: 'Anantapur', state: { name: 'Andhra Pradesh' } } } },
+      
+      // Tamil Nadu - Chennai
+      { id: 10, code: '601001001', name: 'Chennai Central', subDistrictId: 3, subDistrict: { name: 'Chennai City', district: { name: 'Chennai', state: { name: 'Tamil Nadu' } } } },
+      { id: 11, code: '601001002', name: 'T Nagar', subDistrictId: 3, subDistrict: { name: 'Chennai City', district: { name: 'Chennai', state: { name: 'Tamil Nadu' } } } },
+      { id: 12, code: '601001003', name: 'Adyar', subDistrictId: 3, subDistrict: { name: 'Chennai City', district: { name: 'Chennai', state: { name: 'Tamil Nadu' } } } },
+      { id: 13, code: '601001004', name: 'Mylapore', subDistrictId: 3, subDistrict: { name: 'Chennai City', district: { name: 'Chennai', state: { name: 'Tamil Nadu' } } } },
+      { id: 14, code: '601001005', name: 'Anna Nagar', subDistrictId: 3, subDistrict: { name: 'Chennai City', district: { name: 'Chennai', state: { name: 'Tamil Nadu' } } } },
+      { id: 15, code: '601001006', name: 'Velachery', subDistrictId: 3, subDistrict: { name: 'Chennai City', district: { name: 'Chennai', state: { name: 'Tamil Nadu' } } } },
+      { id: 16, code: '601001007', name: 'Porur', subDistrictId: 3, subDistrict: { name: 'Chennai City', district: { name: 'Chennai', state: { name: 'Tamil Nadu' } } } },
+      { id: 17, code: '601001008', name: 'Ambattur', subDistrictId: 3, subDistrict: { name: 'Chennai City', district: { name: 'Chennai', state: { name: 'Tamil Nadu' } } } },
+      { id: 18, code: '601001009', name: 'Tambaram', subDistrictId: 3, subDistrict: { name: 'Chennai City', district: { name: 'Chennai', state: { name: 'Tamil Nadu' } } } },
+      
+      // Karnataka - Bangalore
+      { id: 20, code: '501002001', name: 'Bangalore North', subDistrictId: 4, subDistrict: { name: 'Bangalore Urban', district: { name: 'Bangalore', state: { name: 'Karnataka' } } } },
+      { id: 21, code: '501002002', name: 'Koramangala', subDistrictId: 4, subDistrict: { name: 'Bangalore Urban', district: { name: 'Bangalore', state: { name: 'Karnataka' } } } },
+      { id: 22, code: '501002003', name: 'Whitefield', subDistrictId: 4, subDistrict: { name: 'Bangalore Urban', district: { name: 'Bangalore', state: { name: 'Karnataka' } } } },
+      { id: 23, code: '501002004', name: 'Electronic City', subDistrictId: 4, subDistrict: { name: 'Bangalore Urban', district: { name: 'Bangalore', state: { name: 'Karnataka' } } } },
+      { id: 24, code: '501002005', name: 'Jayanagar', subDistrictId: 4, subDistrict: { name: 'Bangalore Urban', district: { name: 'Bangalore', state: { name: 'Karnataka' } } } },
+      { id: 25, code: '501002006', name: 'Indiranagar', subDistrictId: 4, subDistrict: { name: 'Bangalore Urban', district: { name: 'Bangalore', state: { name: 'Karnataka' } } } },
+      
+      // Kerala - Kochi
+      { id: 30, code: '401001001', name: 'Kochi Central', subDistrictId: 5, subDistrict: { name: 'Ernakulam', district: { name: 'Ernakulam', state: { name: 'Kerala' } } } },
+      { id: 31, code: '401001002', name: 'Fort Kochi', subDistrictId: 5, subDistrict: { name: 'Ernakulam', district: { name: 'Ernakulam', state: { name: 'Kerala' } } } },
+      { id: 32, code: '401001003', name: 'Aluva', subDistrictId: 5, subDistrict: { name: 'Ernakulam', district: { name: 'Ernakulam', state: { name: 'Kerala' } } } },
+      
+      // Maharashtra - Mumbai
+      { id: 40, code: '301001001', name: 'Mumbai Central', subDistrictId: 6, subDistrict: { name: 'Mumbai City', district: { name: 'Mumbai', state: { name: 'Maharashtra' } } } },
+      { id: 41, code: '301001002', name: 'Andheri', subDistrictId: 6, subDistrict: { name: 'Mumbai City', district: { name: 'Mumbai', state: { name: 'Maharashtra' } } } },
+      { id: 42, code: '301001003', name: 'Bandra', subDistrictId: 6, subDistrict: { name: 'Mumbai City', district: { name: 'Mumbai', state: { name: 'Maharashtra' } } } },
+      { id: 43, code: '301001004', name: 'Thane', subDistrictId: 6, subDistrict: { name: 'Mumbai City', district: { name: 'Mumbai', state: { name: 'Maharashtra' } } } },
+      { id: 44, code: '301001005', name: 'Navi Mumbai', subDistrictId: 6, subDistrict: { name: 'Mumbai City', district: { name: 'Mumbai', state: { name: 'Maharashtra' } } } },
+    ];
+    
+    this.states = [
+      { id: 1, code: 'AP', name: 'Andhra Pradesh' },
+      { id: 2, code: 'TN', name: 'Tamil Nadu' },
+      { id: 3, code: 'KA', name: 'Karnataka' },
+      { id: 4, code: 'KL', name: 'Kerala' },
+      { id: 5, code: 'MH', name: 'Maharashtra' },
+    ];
+    
+    this.districts = [
+      { id: 1, code: '501', name: 'Anantapur', stateId: 1 },
+      { id: 2, code: '502', name: 'Chittoor', stateId: 1 },
+      { id: 3, code: '601', name: 'Chennai', stateId: 2 },
+      { id: 4, code: '602', name: 'Coimbatore', stateId: 2 },
+      { id: 5, code: '701', name: 'Bangalore', stateId: 3 },
+      { id: 6, code: '401', name: 'Ernakulam', stateId: 4 },
+      { id: 7, code: '301', name: 'Mumbai', stateId: 5 },
+    ];
+    
+    this.subDistricts = [
+      { id: 1, code: '501001', name: 'Anantapur', districtId: 1 },
+      { id: 2, code: '501002', name: 'Dharmavaram', districtId: 1 },
+      { id: 3, code: '601001', name: 'Chennai City', districtId: 3 },
+      { id: 4, code: '701001', name: 'Bangalore Urban', districtId: 5 },
+      { id: 5, code: '401001', name: 'Ernakulam', districtId: 6 },
+      { id: 6, code: '301001', name: 'Mumbai City', districtId: 7 },
+    ];
+    
+    this.initialized = false;
+  }
+
+  async initDemoData() {
+    if (this.initialized) return;
+    
+    const hashedPassword = await bcrypt.hash('Demo@123456', 10);
+    const demoUser = {
+      id: 'demo-user-1',
+      email: 'demo@villageapi.com',
+      businessName: 'Village API Demo',
+      passwordHash: hashedPassword,
+      planType: 'UNLIMITED',
+      status: 'ACTIVE',
+      stateAccess: [],
+    };
+    this.users.set(demoUser.id, demoUser);
+    this.users.set(demoUser.email, demoUser);
+
+    const demoKey = 'ak_demo123456789012345678901234';
+    const demoSecretHash = await bcrypt.hash('as_demo123456789012345678901234', 10);
+    const apiKeyRecord = {
+      id: 'key-1',
+      userId: demoUser.id,
+      name: 'Demo Client Key',
+      key: demoKey,
+      secretHash: demoSecretHash,
+      isActive: true,
+      user: demoUser,
+    };
+    this.apiKeys.set(demoKey, apiKeyRecord);
+    
+    console.log('Demo API Key:', demoKey);
+    this.initialized = true;
+  }
+
+  async findUserByEmail(email) { return this.users.get(email) || null; }
+  async findUserById(id) { return this.users.get(id) || null; }
+  async createUser(data) {
+    const id = `user-${randomUUID()}`;
+    const user = { ...data, id, stateAccess: [] };
+    this.users.set(id, user);
+    this.users.set(data.email, user);
+    return user;
+  }
+  async findApiKey(key) { return this.apiKeys.get(key) || null; }
+  async createApiKey(data) {
+    const id = `key-${randomUUID()}`;
+    const keyRecord = { ...data, id };
+    this.apiKeys.set(data.key, keyRecord);
+    return keyRecord;
+  }
+
+  getAllStates() { return this.states; }
+  getDistrictsByState(stateId) { return this.districts.filter(d => d.stateId === parseInt(stateId)); }
+  getSubDistrictsByDistrict(districtId) { return this.subDistricts.filter(s => s.districtId === parseInt(districtId)); }
+  getVillagesBySubDistrict(subDistrictId) { return this.villages.filter(v => v.subDistrictId === parseInt(subDistrictId)); }
+  
+  searchVillages(query) {
+    const q = query.toLowerCase();
+    return this.villages.filter(v => v.name.toLowerCase().includes(q));
+  }
+
+  autocompleteVillages(query) {
+    return this.searchVillages(query).slice(0, 10);
+  }
+
+  async addApiLog(log) {
+    this.apiLogs.push({ ...log, id: this.apiLogs.length + 1, createdAt: new Date() });
+  }
+
+  getApiLogs(userId) { return this.apiLogs.filter(l => l.userId === userId); }
+}
+
+const USE_MEMORY_FALLBACK = process.env.USE_MEMORY_FALLBACK === 'true' || !process.env.DATABASE_URL;
+const DEMO_MODE = process.env.DEMO_MODE === 'true' || USE_MEMORY_FALLBACK;
+
 const app = express();
-const prisma = new PrismaClient();
+const memoryDB = new MemoryDB();
 
-// Redis client with retry logic
-const redis = createClient({
-  url: process.env.REDIS_URL,
-  socket: {
-    reconnectStrategy: (retries) => Math.min(retries * 100, 5000),
-  },
-});
+let prisma = null;
+try {
+  if (!USE_MEMORY_FALLBACK && process.env.DATABASE_URL) {
+    prisma = new PrismaClient();
+    console.log('Database mode: PostgreSQL');
+  }
+} catch (e) {
+  console.log('Database connection failed, using memory fallback');
+}
 
-redis.on('error', (err) => console.error('Redis error:', err));
-redis.on('connect', () => console.log('✅ Redis connected'));
-redis.on('reconnecting', () => console.log('🔄 Redis reconnecting...'));
+let redis = null;
+let redisConnected = false;
 
-// Connect to Redis
-redis.connect().catch((err) => {
-  console.error('❌ Failed to connect to Redis:', err.message);
-  process.exit(1);
-});
+async function initRedis() {
+  if (!process.env.REDIS_URL || USE_MEMORY_FALLBACK) {
+    console.log('Redis mode: In-memory fallback');
+    redis = new MemoryCache();
+    return;
+  }
 
-// Security middleware
+  try {
+    const client = createClient({
+      url: process.env.REDIS_URL,
+      socket: {
+        reconnectStrategy: (retries) => Math.min(retries * 100, 5000),
+        connectTimeout: 5000,
+      },
+    });
+
+    client.on('error', (err) => { redisConnected = false; });
+    client.on('connect', () => { redisConnected = true; });
+
+    await client.connect();
+    redis = client;
+    redisConnected = true;
+  } catch (err) {
+    console.log('Redis connection failed, using in-memory fallback');
+    redis = new MemoryCache();
+  }
+}
+
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
-      defaultSrc: ['\'self\''],
-      styleSrc: ['\'self\'', '\'unsafe-inline\'', 'https:'],
-      scriptSrc: ['\'self\'', '\'unsafe-inline\''],
-      imgSrc: ['\'self\'', 'data:', 'https:'],
-      connectSrc: ['\'self\'', 'https:'],
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'https:'],
+      connectSrc: ["'self'", 'https:'],
     },
   },
   crossOriginEmbedderPolicy: false,
 }));
 
-// Cookie parser middleware (for refresh tokens)
 app.use(cookieParser());
 
-// CORS configuration with production validation
 const corsOrigins = process.env.CORS_ORIGINS?.split(',')
-  ?? (process.env.NODE_ENV === 'production'
-    ? ['https://yourdomain.com', 'https://admin.yourdomain.com']
-    : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175']);
+  ?? ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:3000'];
 
 app.use(cors({
   origin: corsOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-CSRF-Token'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-API-Secret', 'X-CSRF-Token'],
 }));
 
-// Parse JSON with limit
 app.use(express.json({ limit: '10mb' }));
 
-// Global rate limiting
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 500,
-  message: { success: false, error: { code: 'RATE_LIMITED', message: 'Too many requests, please try again later' } },
+  message: { success: false, error: { code: 'RATE_LIMITED', message: 'Too many requests' } },
   standardHeaders: true,
   legacyHeaders: false,
 }));
 
-// Custom security headers (per spec section 10.3)
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-  res.setHeader('Content-Security-Policy', 'default-src \'self\' \'unsafe-inline\' \'unsafe-eval\' https:; frame-ancestors \'self\'');
+  res.setHeader('Content-Security-Policy', "default-src 'self' 'unsafe-inline' 'unsafe-eval' https:; frame-ancestors 'self'");
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
   next();
 });
+
 const csrfProtection = csrf({ cookie: true });
 
-// Helper function to mask errors in production
 function maskError(error, req) {
   const errorId = randomUUID().slice(0, 8);
   if (process.env.NODE_ENV === 'production') {
@@ -114,12 +314,12 @@ function maskError(error, req) {
   return error.message;
 }
 
-// Authentication middleware for API key
 async function authenticate(req, res, next) {
   const apiKey = req.headers['x-api-key'];
   const apiSecret = req.headers['x-api-secret'];
   const method = (req.method || 'GET').toUpperCase();
   const requiresSecret = !['GET', 'HEAD', 'OPTIONS'].includes(method);
+
   if (!apiKey) {
     return res.status(401).json({
       success: false,
@@ -132,10 +332,16 @@ async function authenticate(req, res, next) {
     let keyRecord = cached ? JSON.parse(cached) : null;
 
     if (!keyRecord) {
-      keyRecord = await prisma.apiKey.findUnique({
-        where: { key: apiKey, isActive: true },
-        include: { user: { include: { stateAccess: true } } },
-      });
+      if (prisma) {
+        keyRecord = await prisma.apiKey.findUnique({
+          where: { key: apiKey, isActive: true },
+          include: { user: { include: { stateAccess: true } } },
+        });
+      }
+      
+      if (!keyRecord && USE_MEMORY_FALLBACK) {
+        keyRecord = await memoryDB.findApiKey(apiKey);
+      }
 
       if (!keyRecord) {
         return res.status(401).json({
@@ -172,127 +378,33 @@ async function authenticate(req, res, next) {
       }
     }
 
-    const today = new Date().toISOString().slice(0, 10);
-    const limits = {
-      FREE: 5000, PREMIUM: 50000, PRO: 300000, UNLIMITED: 1000000,
-    };
-    const limit = limits[keyRecord.user.planType] ?? 1000;
-
-    // Fixed race condition in rate limiting
-    const key = `ratelimit:${keyRecord.userId}:${today}`;
-    const usage = await redis.incr(key);
-
-    if (usage === 1) {
-      await redis.expire(key, 86400);
-    } else {
-      // Ensure TTL exists (handle race condition)
-      const ttl = await redis.ttl(key);
-      if (ttl === -1) await redis.expire(key, 86400);
-    }
-
-    if (usage > limit) {
-      const reset = `${today}T23:59:59Z`;
-      const resetEpoch = Math.floor(new Date(reset).getTime() / 1000);
-      applyRateLimitHeaders(res, {
-        limit, remaining: 0, reset, resetEpoch,
-      });
-
-      // Send quota exceeded notification asynchronously
-      setImmediate(() => {
-        import('./services/emailService.js').then(({ sendUsageExceededEmail }) => {
-          sendUsageExceededEmail(keyRecord.user, { dailyLimit: limit }).catch(console.error);
-        });
-      });
-
-      return res.status(429).json({
-        success: false,
-        error: { code: 'RATE_LIMITED', message: 'Daily quota exceeded' },
-      });
-    }
-
-    // Check for usage alert thresholds (80%, 95%)
-    const usagePercentage = (usage / limit) * 100;
-    if (usagePercentage >= 80 && usagePercentage < 95) {
-      const alertKey = `alert:80:${keyRecord.userId}:${today}`;
-      const alertSent = await redis.get(alertKey);
-      if (!alertSent) {
-        await redis.setEx(alertKey, 86400, 'sent');
-        setImmediate(() => {
-          import('./services/emailService.js').then(({ sendUsageAlert }) => {
-            sendUsageAlert(keyRecord.user, usagePercentage, usage, limit).catch(console.error);
-          });
-        });
-      }
-    } else if (usagePercentage >= 95) {
-      const alertKey = `alert:95:${keyRecord.userId}:${today}`;
-      const alertSent = await redis.get(alertKey);
-      if (!alertSent) {
-        await redis.setEx(alertKey, 86400, 'sent');
-        setImmediate(() => {
-          import('./services/emailService.js').then(({ sendUsageAlert }) => {
-            sendUsageAlert(keyRecord.user, usagePercentage, usage, limit).catch(console.error);
-          });
-        });
-      }
-    }
-
-    req.apiKey = keyRecord;
     req.user = keyRecord.user;
-    req.rateLimit = {
-      remaining: Math.max(0, limit - usage),
-      limit,
-      reset: `${today}T23:59:59Z`,
-      resetEpoch: Math.floor(new Date(`${today}T23:59:59Z`).getTime() / 1000),
-      usagePercentage: Math.round(usagePercentage),
-    };
+    req.apiKey = keyRecord;
+    req.userId = keyRecord.user.id;
 
-    // Fire-and-forget update with proper error handling
-    setImmediate(() => {
-      prisma.apiKey.update({
+    if (prisma) {
+      await prisma.apiKey.update({
         where: { id: keyRecord.id },
         data: { lastUsedAt: new Date() },
-      }).catch((err) => console.error('Failed to update lastUsedAt:', err));
-    });
+      });
+    }
 
     next();
   } catch (error) {
-    const message = maskError(error, req);
-    res.status(500).json({ success: false, error: message });
+    console.error('Auth error:', error);
+    res.status(500).json({ success: false, error: 'Authentication failed' });
   }
 }
 
-// Success response formatter
-function applyRateLimitHeaders(res, rateLimit) {
-  if (!rateLimit) return;
-  const resetEpoch = rateLimit.resetEpoch ?? Math.floor(new Date(rateLimit.reset).getTime() / 1000);
-  res.setHeader('X-RateLimit-Limit', String(rateLimit.limit));
-  res.setHeader('X-RateLimit-Remaining', String(rateLimit.remaining));
-  res.setHeader('X-RateLimit-Reset', String(resetEpoch));
-}
-
-function success(data, res, req) {
-  applyRateLimitHeaders(res, req.rateLimit);
-  return res.json({
-    success: true,
-    count: Array.isArray(data) ? data.length : 1,
-    data,
-    meta: {
-      requestId: `req_${randomUUID().slice(0, 8)}`,
-      responseTime: Date.now() - req._startTime,
-      rateLimit: req.rateLimit,
-    },
-  });
-}
-
-// JWT Authentication Middleware with refresh token support
 function authenticateJWT(req, res, next) {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) {
     return res.status(401).json({ success: false, error: 'No token provided' });
   }
 
+  const jwtSecret = process.env.JWT_SECRET || 'demo-jwt-secret';
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+    const decoded = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] });
     req.user = decoded;
     next();
   } catch (error) {
@@ -307,18 +419,19 @@ function authenticateJWT(req, res, next) {
   }
 }
 
-// Refresh token endpoint
 app.post('/auth/refresh', async (req, res) => {
   const refreshToken = req.cookies?.refreshToken;
   if (!refreshToken) {
     return res.status(401).json({ success: false, error: 'No refresh token' });
   }
 
+  const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || 'demo-refresh-secret';
   try {
-    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    const decoded = jwt.verify(refreshToken, jwtRefreshSecret);
+    const jwtSecret = process.env.JWT_SECRET || 'demo-jwt-secret';
     const newAccessToken = jwt.sign(
       { id: decoded.id, email: decoded.email, role: decoded.role },
-      process.env.JWT_SECRET,
+      jwtSecret,
       { expiresIn: '15m', algorithm: 'HS256' },
     );
     res.json({ success: true, data: { accessToken: newAccessToken } });
@@ -327,7 +440,6 @@ app.post('/auth/refresh', async (req, res) => {
   }
 });
 
-// Logout endpoint
 app.post('/auth/logout', (req, res) => {
   res.clearCookie('refreshToken', {
     httpOnly: true,
@@ -337,58 +449,56 @@ app.post('/auth/logout', (req, res) => {
   res.json({ success: true, message: 'Logged out successfully' });
 });
 
-// Request timing middleware
 app.use((req, _res, next) => {
   req._startTime = Date.now();
   next();
 });
 
-// Health check endpoint (no auth required)
 app.get('/health', async (req, res) => {
-  try {
-    // Check database connection
-    await prisma.$queryRaw`SELECT 1`;
-    // Check Redis connection
-    await redis.ping();
+  const status = {
+    status: 'ok',
+    timestamp: new Date(),
+    mode: USE_MEMORY_FALLBACK ? 'memory-fallback' : 'database',
+    services: {
+      database: prisma ? 'connected' : 'memory-fallback',
+      redis: redisConnected ? 'connected' : 'memory-fallback',
+      api: 'running',
+    },
+  };
 
-    res.json({
-      status: 'ok',
-      timestamp: new Date(),
-      services: {
-        database: 'connected',
-        redis: 'connected',
-        api: 'running',
-      },
-    });
+  try {
+    if (prisma) await prisma.$queryRaw`SELECT 1`;
+    if (redis && redisConnected) await redis.ping();
+    res.json(status);
   } catch (error) {
-    res.status(503).json({
-      status: 'degraded',
-      timestamp: new Date(),
-      error: error.message,
-    });
+    status.status = 'degraded';
+    status.error = error.message;
+    res.status(503).json(status);
   }
 });
 
-// CSRF token endpoint
 app.get('/api/csrf-token', csrfProtection, (req, res) => {
   res.json({ csrfToken: req.csrfToken() });
 });
 
-// ===== AUTH ENDPOINTS =====
 app.post('/admin/login', async (req, res) => {
   const { email, password } = req.body;
 
-  // Input validation
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!email || !password) {
     return res.status(400).json({ success: false, error: 'Email and password required' });
   }
-  if (!emailRegex.test(email)) {
-    return res.status(400).json({ success: false, error: 'Invalid email format' });
-  }
 
   try {
-    const user = await prisma.user.findUnique({ where: { email } });
+    let user = null;
+    
+    if (prisma) {
+      user = await prisma.user.findUnique({ where: { email } });
+    }
+    
+    if (!user && USE_MEMORY_FALLBACK) {
+      user = await memoryDB.findUserByEmail(email);
+    }
+
     if (!user) {
       return res.status(401).json({ success: false, error: 'Invalid credentials' });
     }
@@ -402,17 +512,18 @@ app.post('/admin/login', async (req, res) => {
       return res.status(403).json({ success: false, error: 'Account not active' });
     }
 
-    // Short-lived access token
+    const jwtSecret = process.env.JWT_SECRET || 'demo-jwt-secret';
+    const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || 'demo-refresh-secret';
+    
     const accessToken = jwt.sign(
       { id: user.id, email: user.email, role: 'admin' },
-      process.env.JWT_SECRET,
+      jwtSecret,
       { expiresIn: '15m', algorithm: 'HS256' },
     );
 
-    // Refresh token (store in HTTP-only cookie)
     const refreshToken = jwt.sign(
       { id: user.id, email: user.email, role: 'admin' },
-      process.env.JWT_REFRESH_SECRET,
+      jwtRefreshSecret,
       { expiresIn: '7d' },
     );
 
@@ -444,43 +555,46 @@ app.post('/admin/login', async (req, res) => {
 });
 
 app.post('/auth/register', async (req, res) => {
-  const {
-    email, businessName, phone, gstNumber, password,
-  } = req.body;
+  const { email, businessName, phone, gstNumber, password } = req.body;
 
-  // Input validation
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!email || !businessName || !password) {
     return res.status(400).json({ success: false, error: 'Missing required fields' });
-  }
-  if (!emailRegex.test(email)) {
-    return res.status(400).json({ success: false, error: 'Invalid email format' });
   }
   if (password.length < 8) {
     return res.status(400).json({ success: false, error: 'Password must be at least 8 characters' });
   }
 
   try {
-    const existing = await prisma.user.findUnique({ where: { email } });
+    let existing = null;
+    
+    if (prisma) {
+      existing = await prisma.user.findUnique({ where: { email } });
+    }
+    if (!existing && USE_MEMORY_FALLBACK) {
+      existing = await memoryDB.findUserByEmail(email);
+    }
+    
     if (existing) {
       return res.status(409).json({ success: false, error: 'User already exists' });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const user = await prisma.user.create({
-      data: {
-        email,
-        businessName,
-        phone: phone || null,
-        gstNumber: gstNumber || null,
-        passwordHash,
-        status: 'PENDING_APPROVAL',
-        planType: 'FREE',
-      },
-    });
+    const userData = {
+      email,
+      businessName,
+      phone: phone || null,
+      gstNumber: gstNumber || null,
+      passwordHash,
+      status: 'PENDING_APPROVAL',
+      planType: 'FREE',
+    };
 
-    // Notify admin about new registration (optional)
-    console.log(`📝 New registration: ${email} (${businessName})`);
+    let user;
+    if (prisma) {
+      user = await prisma.user.create({ data: userData });
+    } else {
+      user = await memoryDB.createUser(userData);
+    }
 
     res.status(201).json({
       success: true,
@@ -496,858 +610,625 @@ app.post('/auth/register', async (req, res) => {
   }
 });
 
-// ===== ADMIN ENDPOINTS =====
-app.get('/admin/users', authenticateJWT, async (req, res) => {
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({ success: false, error: 'Admin only' });
-  }
-
-  try {
-    const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        businessName: true,
-        planType: true,
-        status: true,
-        createdAt: true,
-        phone: true,
-        gstNumber: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-    res.json({ success: true, data: users, count: users.length });
-  } catch (error) {
-    const message = maskError(error, req);
-    res.status(500).json({ success: false, error: message });
-  }
-});
-
-app.patch('/admin/users/:id/approve', authenticateJWT, async (req, res) => {
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({ success: false, error: 'Admin only' });
-  }
-
-  try {
-    // Handle both Int and String IDs
-    const { id } = req.params;
-    const whereId = isNaN(parseInt(id)) ? id : parseInt(id);
-
-    const user = await prisma.user.update({
-      where: { id: whereId },
-      data: { status: 'ACTIVE' },
-    });
-
-    // Send approval email to user (spec 8.2)
-    await sendApprovalEmail(user).catch((err) => {
-      console.error('Failed to send approval email:', err);
-    });
-
-    res.json({ success: true, data: user });
-  } catch (error) {
-    const message = maskError(error, req);
-    res.status(500).json({ success: false, error: message });
-  }
-});
-
-app.patch('/admin/users/:id/plan', authenticateJWT, async (req, res) => {
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({ success: false, error: 'Admin only' });
-  }
-
-  const { planType } = req.body;
-  const validPlans = ['FREE', 'PREMIUM', 'PRO', 'UNLIMITED'];
-
-  if (!planType || !validPlans.includes(planType)) {
-    return res.status(400).json({
-      success: false,
-      error: `Invalid plan type. Must be one of: ${validPlans.join(', ')}`,
-    });
-  }
-
-  try {
-    const { id } = req.params;
-    const whereId = isNaN(parseInt(id)) ? id : parseInt(id);
-
-    const user = await prisma.user.update({
-      where: { id: whereId },
-      data: { planType },
-    });
-    res.json({ success: true, data: user });
-  } catch (error) {
-    const message = maskError(error, req);
-    res.status(500).json({ success: false, error: message });
-  }
-});
-
-app.get('/admin/analytics', authenticateJWT, async (req, res) => {
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({ success: false, error: 'Admin only' });
-  }
-
-  try {
-    const [totalVillages, activeUsers, totalRequests, pendingApprovals] = await Promise.all([
-      prisma.village.count(),
-      prisma.user.count({ where: { status: 'ACTIVE' } }),
-      prisma.apiLog.count(),
-      prisma.user.count({ where: { status: 'PENDING_APPROVAL' } }),
-    ]);
-
-    res.json({
-      success: true,
-      data: {
-        totalVillages,
-        activeUsers,
-        totalRequests,
-        pendingApprovals,
-      },
-    });
-  } catch (error) {
-    const message = maskError(error, req);
-    res.status(500).json({ success: false, error: message });
-  }
-});
-
-app.get('/admin/logs', authenticateJWT, async (req, res) => {
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({ success: false, error: 'Admin only' });
-  }
-
-  try {
-    const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
-    const skip = (page - 1) * limit;
-
-    const [logs, total] = await Promise.all([
-      prisma.apiLog.findMany({
-        include: {
-          user: { select: { businessName: true, email: true } },
-          apiKey: { select: { key: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      prisma.apiLog.count(),
-    ]);
-
-    res.json({
-      success: true,
-      data: logs,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit),
-      },
-    });
-  } catch (error) {
-    const message = maskError(error, req);
-    res.status(500).json({ success: false, error: message });
-  }
-});
-
-// ===== VILLAGE API ENDPOINTS =====
-
 app.get('/v1/states', authenticate, async (req, res) => {
   try {
-    const stateAccessIds = Array.isArray(req.user?.stateAccess)
-      ? req.user.stateAccess
-        .map((entry) => entry?.stateId ?? entry?.id)
-        .filter((id) => Number.isInteger(id))
-      : [];
-    const hasRestrictedStateAccess = stateAccessIds.length > 0;
-    const cacheKey = hasRestrictedStateAccess
-      ? `states:restricted:${stateAccessIds.sort((a, b) => a - b).join(',')}`
-      : 'states:all';
+    let states = [];
+    
+    if (prisma) {
+      states = await prisma.state.findMany({ orderBy: { name: 'asc' } });
+    }
+    
+    if (states.length === 0 || USE_MEMORY_FALLBACK) {
+      states = memoryDB.getAllStates();
+    }
 
-    const cached = await redis.get(cacheKey);
-    if (cached) return success(JSON.parse(cached), res, req);
-
-    const states = await prisma.state.findMany({
-      where: hasRestrictedStateAccess ? { id: { in: stateAccessIds } } : undefined,
-      orderBy: { name: 'asc' },
-      select: { id: true, code: true, name: true },
+    res.json({
+      success: true,
+      count: states.length,
+      data: states.map(s => ({ code: s.code, name: s.name })),
     });
-
-    await redis.setEx(cacheKey, 3600, JSON.stringify(states));
-    return success(states, res, req);
   } catch (error) {
-    const message = maskError(error, req);
-    res.status(500).json({ success: false, error: message });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 app.get('/v1/states/:id/districts', authenticate, async (req, res) => {
+  const stateId = parseInt(req.params.id);
+  if (isNaN(stateId)) {
+    return res.status(400).json({ success: false, error: 'Invalid state ID' });
+  }
+
   try {
-    const stateId = parseInt(req.params.id);
-    if (isNaN(stateId)) {
-      return res.status(400).json({
-        success: false,
-        error: { code: 'INVALID_QUERY', message: 'Invalid state ID' },
+    let districts = [];
+    
+    if (prisma) {
+      districts = await prisma.district.findMany({
+        where: { stateId },
+        orderBy: { name: 'asc' },
       });
     }
-
-    const stateAccessIds = Array.isArray(req.user?.stateAccess)
-      ? req.user.stateAccess
-        .map((entry) => entry?.stateId ?? entry?.id)
-        .filter((id) => Number.isInteger(id))
-      : [];
-    if (stateAccessIds.length > 0 && !stateAccessIds.includes(stateId)) {
-      return res.status(403).json({
-        success: false,
-        error: { code: 'ACCESS_DENIED', message: 'Not authorized for requested state' },
-      });
+    
+    if (districts.length === 0 || USE_MEMORY_FALLBACK) {
+      districts = memoryDB.getDistrictsByState(stateId);
     }
 
-    const cached = await redis.get(`districts:state:${stateId}`);
-    if (cached) return success(JSON.parse(cached), res, req);
-
-    const districts = await prisma.district.findMany({
-      where: { stateId },
-      orderBy: { name: 'asc' },
-      select: { id: true, code: true, name: true },
+    res.json({
+      success: true,
+      count: districts.length,
+      data: districts.map(d => ({ code: d.code, name: d.name })),
     });
-
-    if (!districts.length) {
-      return res.status(404).json({
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'State not found' },
-      });
-    }
-
-    await redis.setEx(`districts:state:${stateId}`, 3600, JSON.stringify(districts));
-    return success(districts, res, req);
   } catch (error) {
-    const message = maskError(error, req);
-    res.status(500).json({ success: false, error: message });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 app.get('/v1/districts/:id/subdistricts', authenticate, async (req, res) => {
+  const districtId = parseInt(req.params.id);
+  if (isNaN(districtId)) {
+    return res.status(400).json({ success: false, error: 'Invalid district ID' });
+  }
+
   try {
-    const districtId = parseInt(req.params.id);
-    if (isNaN(districtId)) {
-      return res.status(400).json({
-        success: false,
-        error: { code: 'INVALID_QUERY', message: 'Invalid district ID' },
+    let subDistricts = [];
+    
+    if (prisma) {
+      subDistricts = await prisma.subDistrict.findMany({
+        where: { districtId },
+        orderBy: { name: 'asc' },
       });
     }
+    
+    if (subDistricts.length === 0 || USE_MEMORY_FALLBACK) {
+      subDistricts = memoryDB.getSubDistrictsByDistrict(districtId);
+    }
 
-    const cached = await redis.get(`subdistricts:district:${districtId}`);
-    if (cached) return success(JSON.parse(cached), res, req);
-
-    const subs = await prisma.subDistrict.findMany({
-      where: { districtId },
-      orderBy: { name: 'asc' },
-      select: { id: true, code: true, name: true },
+    res.json({
+      success: true,
+      count: subDistricts.length,
+      data: subDistricts.map(s => ({ code: s.code, name: s.name })),
     });
-
-    if (!subs.length) {
-      return res.status(404).json({
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'District not found' },
-      });
-    }
-
-    await redis.setEx(`subdistricts:district:${districtId}`, 3600, JSON.stringify(subs));
-    return success(subs, res, req);
   } catch (error) {
-    const message = maskError(error, req);
-    res.status(500).json({ success: false, error: message });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 app.get('/v1/subdistricts/:id/villages', authenticate, async (req, res) => {
-  try {
-    const subDistrictId = parseInt(req.params.id);
-    const page = Math.max(1, parseInt(req.query.page ?? '1'));
-    const limit = Math.min(500, Math.max(1, parseInt(req.query.limit ?? '100')));
+  const subDistrictId = parseInt(req.params.id);
+  if (isNaN(subDistrictId)) {
+    return res.status(400).json({ success: false, error: 'Invalid sub-district ID' });
+  }
 
-    if (isNaN(subDistrictId)) {
-      return res.status(400).json({
-        success: false,
-        error: { code: 'INVALID_QUERY', message: 'Invalid sub-district ID' },
+  try {
+    let villages = [];
+    
+    if (prisma) {
+      villages = await prisma.village.findMany({
+        where: { subDistrictId },
+        include: { subDistrict: { include: { district: { include: { state: true } } } } },
+        orderBy: { name: 'asc' },
       });
     }
+    
+    if (villages.length === 0 || USE_MEMORY_FALLBACK) {
+      villages = memoryDB.getVillagesBySubDistrict(subDistrictId);
+    }
 
-    const [villages, total] = await Promise.all([
-      prisma.village.findMany({
-        where: { subDistrictId },
-        orderBy: { name: 'asc' },
-        select: { id: true, code: true, name: true },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      prisma.village.count({ where: { subDistrictId } }),
-    ]);
-
-    applyRateLimitHeaders(res, req.rateLimit);
-    return res.json({
+    res.json({
       success: true,
       count: villages.length,
-      data: villages,
-      meta: {
-        requestId: `req_${randomUUID().slice(0, 8)}`,
-        responseTime: Date.now() - req._startTime,
-        rateLimit: req.rateLimit,
-        pagination: {
-          total,
-          page,
-          pages: Math.ceil(total / limit),
-          limit,
-        },
-      },
+      data: villages.map(v => ({
+        code: v.code,
+        name: v.name,
+        fullAddress: `${v.name}, ${v.subDistrict?.name || ''}, ${v.subDistrict?.district?.name || ''}, ${v.subDistrict?.district?.state?.name || ''}, India`,
+      })),
     });
   } catch (error) {
-    const message = maskError(error, req);
-    res.status(500).json({ success: false, error: message });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 app.get('/v1/search', authenticate, async (req, res) => {
-  try {
-    const q = (req.query.q ?? '').trim();
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit ?? '25')));
-    const stateQuery = (req.query.state ?? '').toString().trim();
-    const districtQuery = (req.query.district ?? '').toString().trim();
-    const subDistrictQuery = (req.query.subDistrict ?? '').toString().trim();
+  const { q, limit = 50, offset = 0 } = req.query;
 
-    if (q.length < 2) {
-      return res.status(400).json({
-        success: false,
-        error: { code: 'INVALID_QUERY', message: 'Query must be at least 2 characters' },
-      });
-    }
-
-    const stateAccessIds = Array.isArray(req.user?.stateAccess)
-      ? req.user.stateAccess
-        .map((entry) => entry?.stateId ?? entry?.id)
-        .filter((id) => Number.isInteger(id))
-      : [];
-    const hasRestrictedStateAccess = stateAccessIds.length > 0;
-    const parsedStateId = parseInt(stateQuery, 10);
-
-    if (hasRestrictedStateAccess && stateQuery && !isNaN(parsedStateId) && !stateAccessIds.includes(parsedStateId)) {
-      return res.status(403).json({
-        success: false,
-        error: { code: 'ACCESS_DENIED', message: 'Not authorized for requested state' },
-      });
-    }
-
-    const subDistrictWhere = {};
-
-    if (subDistrictQuery) {
-      const parsedSubDistrictId = parseInt(subDistrictQuery, 10);
-      if (!isNaN(parsedSubDistrictId)) {
-        subDistrictWhere.id = parsedSubDistrictId;
-      } else {
-        subDistrictWhere.name = { contains: subDistrictQuery, mode: 'insensitive' };
-      }
-    }
-
-    if (districtQuery) {
-      const parsedDistrictId = parseInt(districtQuery, 10);
-      if (!isNaN(parsedDistrictId)) {
-        subDistrictWhere.districtId = parsedDistrictId;
-      } else {
-        subDistrictWhere.district = {
-          ...(subDistrictWhere.district ?? {}),
-          name: { contains: districtQuery, mode: 'insensitive' },
-        };
-      }
-    }
-
-    if (stateQuery) {
-      if (!isNaN(parsedStateId)) {
-        subDistrictWhere.district = {
-          ...(subDistrictWhere.district ?? {}),
-          stateId: parsedStateId,
-        };
-      } else {
-        subDistrictWhere.district = {
-          ...(subDistrictWhere.district ?? {}),
-          state: { name: { contains: stateQuery, mode: 'insensitive' } },
-        };
-      }
-    }
-
-    if (hasRestrictedStateAccess) {
-      subDistrictWhere.district = {
-        ...(subDistrictWhere.district ?? {}),
-        stateId: { in: stateAccessIds },
-      };
-    }
-
-    const villages = await prisma.village.findMany({
-      where: {
-        name: { contains: q, mode: 'insensitive' },
-        ...(Object.keys(subDistrictWhere).length > 0 ? { subDistrict: subDistrictWhere } : {}),
-      },
-      take: limit,
-      select: {
-        id: true,
-        code: true,
-        name: true,
-        subDistrict: {
-          select: {
-            name: true,
-            district: {
-              select: {
-                name: true,
-                state: { select: { name: true } },
-              },
-            },
-          },
-        },
-      },
+  if (!q || q.length < 2) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_QUERY', message: 'Query must be at least 2 characters' },
     });
+  }
 
-    const data = villages.map((v) => ({
-      value: `village_id_${v.code}`,
-      label: v.name,
-      fullAddress: `${v.name}, ${v.subDistrict.name}, ${v.subDistrict.district.name}, ${v.subDistrict.district.state.name}, India`,
-      hierarchy: {
-        village: v.name,
-        subDistrict: v.subDistrict.name,
-        district: v.subDistrict.district.name,
-        state: v.subDistrict.district.state.name,
-        country: 'India',
-      },
-    }));
+  try {
+    let villages = [];
+    const cacheKey = `search:${q}:${limit}:${offset}`;
+    const cached = await redis.get(cacheKey);
 
-    return success(data, res, req);
+    if (cached) {
+      villages = JSON.parse(cached);
+    } else {
+      if (prisma) {
+        villages = await prisma.village.findMany({
+          where: {
+            OR: [
+              { name: { contains: q, mode: 'insensitive' } },
+              { code: { contains: q } },
+            ],
+          },
+          include: { subDistrict: { include: { district: { include: { state: true } } } } },
+          take: parseInt(limit),
+          skip: parseInt(offset),
+        });
+      }
+      
+      if (villages.length === 0 || USE_MEMORY_FALLBACK) {
+        villages = memoryDB.searchVillages(q);
+      }
+
+      await redis.setEx(cacheKey, 300, JSON.stringify(villages));
+    }
+
+    res.json({
+      success: true,
+      count: villages.length,
+      data: villages.map(v => ({
+        value: `village_id_${v.code}`,
+        label: v.name,
+        fullAddress: `${v.name}, ${v.subDistrict?.name || ''}, ${v.subDistrict?.district?.name || ''}, ${v.subDistrict?.district?.state?.name || ''}, India`,
+        hierarchy: {
+          village: v.name,
+          subDistrict: v.subDistrict?.name,
+          district: v.subDistrict?.district?.name,
+          state: v.subDistrict?.district?.state?.name,
+          country: 'India',
+        },
+      })),
+      meta: { query: q, limit: parseInt(limit), offset: parseInt(offset) },
+    });
   } catch (error) {
-    const message = maskError(error, req);
-    res.status(500).json({ success: false, error: message });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 app.get('/v1/autocomplete', authenticate, async (req, res) => {
+  const { q, limit = 10 } = req.query;
+
+  if (!q || q.length < 2) {
+    return res.json({ success: true, count: 0, data: [] });
+  }
+
   try {
-    const q = (req.query.q ?? '').trim();
-    const hierarchyLevel = (req.query.hierarchyLevel ?? 'village').toString().trim().toLowerCase();
-    const validLevels = ['village', 'subdistrict', 'district', 'state'];
+    let villages = [];
+    const cacheKey = `autocomplete:${q}:${limit}`;
+    const cached = await redis.get(cacheKey);
 
-    if (q.length < 2) {
-      return res.status(400).json({
-        success: false,
-        error: { code: 'INVALID_QUERY', message: 'Query must be at least 2 characters' },
-      });
-    }
-    if (!validLevels.includes(hierarchyLevel)) {
-      return res.status(400).json({
-        success: false,
-        error: { code: 'INVALID_QUERY', message: 'Invalid hierarchyLevel' },
-      });
-    }
-
-    const cached = await redis.get(`autocomplete:${hierarchyLevel}:${q.toLowerCase()}`);
-    if (cached) return success(JSON.parse(cached), res, req);
-
-    let suggestions = [];
-
-    if (hierarchyLevel === 'state') {
-      const states = await prisma.state.findMany({
-        where: { name: { startsWith: q, mode: 'insensitive' } },
-        orderBy: { name: 'asc' },
-        take: 15,
-        select: { id: true, code: true, name: true },
-      });
-      suggestions = states.map((state) => ({
-        id: state.id,
-        value: `state_id_${state.code}`,
-        label: state.name,
-        sublabel: 'India',
-        state: state.name,
-        fullAddress: `${state.name}, India`,
-        hierarchy: {
-          village: null,
-          subDistrict: null,
-          district: null,
-          state: state.name,
-          country: 'India',
-        },
-      }));
-    } else if (hierarchyLevel === 'district') {
-      const districts = await prisma.district.findMany({
-        where: { name: { startsWith: q, mode: 'insensitive' } },
-        orderBy: { name: 'asc' },
-        take: 15,
-        select: {
-          id: true,
-          code: true,
-          name: true,
-          state: { select: { name: true } },
-        },
-      });
-      suggestions = districts.map((district) => ({
-        id: district.id,
-        value: `district_id_${district.code}`,
-        label: district.name,
-        sublabel: `${district.state.name}, India`,
-        state: district.state.name,
-        fullAddress: `${district.name}, ${district.state.name}, India`,
-        hierarchy: {
-          village: null,
-          subDistrict: null,
-          district: district.name,
-          state: district.state.name,
-          country: 'India',
-        },
-      }));
-    } else if (hierarchyLevel === 'subdistrict') {
-      const subDistricts = await prisma.subDistrict.findMany({
-        where: { name: { startsWith: q, mode: 'insensitive' } },
-        orderBy: { name: 'asc' },
-        take: 15,
-        select: {
-          id: true,
-          code: true,
-          name: true,
-          district: {
-            select: {
-              name: true,
-              state: { select: { name: true } },
-            },
-          },
-        },
-      });
-      suggestions = subDistricts.map((subDistrict) => ({
-        id: subDistrict.id,
-        value: `subdistrict_id_${subDistrict.code}`,
-        label: subDistrict.name,
-        sublabel: `${subDistrict.district.name}, ${subDistrict.district.state.name}`,
-        state: subDistrict.district.state.name,
-        fullAddress: `${subDistrict.name}, ${subDistrict.district.name}, ${subDistrict.district.state.name}, India`,
-        hierarchy: {
-          village: null,
-          subDistrict: subDistrict.name,
-          district: subDistrict.district.name,
-          state: subDistrict.district.state.name,
-          country: 'India',
-        },
-      }));
+    if (cached) {
+      villages = JSON.parse(cached);
     } else {
-      const villages = await prisma.village.findMany({
-        where: { name: { startsWith: q, mode: 'insensitive' } },
-        take: 15,
-        select: {
-          id: true,
-          name: true,
-          code: true,
-          subDistrict: {
-            select: {
-              name: true,
-              district: {
-                select: {
-                  name: true,
-                  state: { select: { name: true } },
-                },
-              },
-            },
+      if (prisma) {
+        villages = await prisma.village.findMany({
+          where: {
+            name: { contains: q, mode: 'insensitive' },
           },
-        },
-      });
-      suggestions = villages.map((v) => ({
-        id: v.id,
-        value: `village_id_${v.code}`,
-        label: v.name,
-        sublabel: `${v.subDistrict.name}, ${v.subDistrict.district.name}`,
-        state: v.subDistrict.district.state.name,
-        fullAddress: `${v.name}, ${v.subDistrict.name}, ${v.subDistrict.district.name}, ${v.subDistrict.district.state.name}, India`,
-        hierarchy: {
-          village: v.name,
-          subDistrict: v.subDistrict.name,
-          district: v.subDistrict.district.name,
-          state: v.subDistrict.district.state.name,
-          country: 'India',
-        },
-      }));
+          take: parseInt(limit),
+          orderBy: { name: 'asc' },
+        });
+      }
+      
+      if (villages.length === 0 || USE_MEMORY_FALLBACK) {
+        villages = memoryDB.autocompleteVillages(q).slice(0, parseInt(limit));
+      }
+
+      await redis.setEx(cacheKey, 600, JSON.stringify(villages));
     }
 
-    await redis.setEx(`autocomplete:${hierarchyLevel}:${q.toLowerCase()}`, 60, JSON.stringify(suggestions));
-    return success(suggestions, res, req);
+    res.json({
+      success: true,
+      count: villages.length,
+      data: villages.map(v => ({ value: v.code, label: v.name })),
+    });
   } catch (error) {
-    const message = maskError(error, req);
-    res.status(500).json({ success: false, error: message });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// ===== B2B USER ENDPOINTS =====
-
-// Get B2B user dashboard stats
+// B2B Dashboard Endpoints
 app.get('/b2b/dashboard', authenticateJWT, async (req, res) => {
   try {
     const userId = req.user.id;
+    let user = null;
+    let apiKeys = [];
+    let todayRequests = 0;
+    let monthRequests = 0;
 
-    // Get user's daily quota info
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { planType: true },
+    if (prisma) {
+      user = await prisma.user.findUnique({ where: { id: userId } });
+      apiKeys = await prisma.apiKey.findMany({ 
+        where: { userId },
+        select: { id: true, name: true, key: true, isActive: true, createdAt: true, lastUsedAt: true }
+      });
+      
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      
+      todayRequests = await prisma.apiLog.count({
+        where: { userId, createdAt: { gte: today } }
+      });
+      
+      monthRequests = await prisma.apiLog.count({
+        where: { userId, createdAt: { gte: monthStart } }
+      });
+    } else if (USE_MEMORY_FALLBACK) {
+      user = await memoryDB.findUserById(userId);
+      apiKeys = Array.from(memoryDB.apiKeys.values()).filter(k => k.userId === userId);
+      const logs = memoryDB.getApiLogs(userId);
+      todayRequests = logs.filter(l => new Date(l.createdAt) >= new Date().setHours(0,0,0,0)).length;
+      monthRequests = logs.length;
+    }
+
+    const planLimits = { FREE: 1000, PREMIUM: 10000, PRO: 50000, UNLIMITED: 1000000 };
+    const limit = planLimits[user?.planType] || 1000;
+
+    res.json({
+      success: true,
+      data: {
+        user: {
+          email: user?.email,
+          businessName: user?.businessName,
+          planType: user?.planType,
+          status: user?.status,
+        },
+        usage: {
+          today: todayRequests,
+          month: monthRequests,
+          limit: limit,
+          remaining: Math.max(0, limit - todayRequests),
+        },
+        apiKeys: apiKeys.map(k => ({
+          id: k.id,
+          name: k.name,
+          key: k.key?.substring(0, 10) + '...',
+          isActive: k.isActive,
+          createdAt: k.createdAt,
+          lastUsedAt: k.lastUsedAt,
+        })),
+      },
     });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
-    const today = new Date().toISOString().slice(0, 10);
-    const plans = {
-      FREE: 1000, PREMIUM: 10000, PRO: 50000, UNLIMITED: 999999999,
-    };
-    const dailyLimit = plans[user.planType] || 1000;
-
-    // Get today's usage
-    const todayUsage = await redis.get(`ratelimit:${userId}:${today}`) || 0;
-
-    // Get user's API logs for usage stats
-    const logs = await prisma.apiLog.findMany({
-      where: { userId },
-      select: { responseTime: true, createdAt: true, statusCode: true },
-      orderBy: { createdAt: 'desc' },
-      take: 1000,
-    });
-
-    const totalRequests = logs.length;
-    const avgResponseTime = logs.length > 0
-      ? Math.round(logs.reduce((a, b) => a + b.responseTime, 0) / logs.length)
-      : 0;
-    const successRate = logs.length > 0
-      ? Math.round((logs.filter((l) => l.statusCode >= 200 && l.statusCode < 300).length / logs.length) * 100)
-      : 0;
-
-    // Last 7 days usage chart data
-    const last7Days = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().slice(0, 10);
-      const count = logs.filter((l) => l.createdAt.toISOString().slice(0, 10) === dateStr).length;
-      last7Days.push({ date: dateStr, requests: count });
+// B2B API Keys endpoints
+app.get('/b2b/apikeys', authenticateJWT, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    let apiKeys = [];
+    
+    if (prisma) {
+      apiKeys = await prisma.apiKey.findMany({ 
+        where: { userId },
+        orderBy: { createdAt: 'desc' }
+      });
+    } else if (USE_MEMORY_FALLBACK) {
+      apiKeys = Array.from(memoryDB.apiKeys.values()).filter(k => k.userId === userId);
     }
 
     res.json({
       success: true,
-      data: {
-        plan: user.planType,
-        dailyLimit,
-        todayUsage: parseInt(todayUsage) || 0,
-        totalRequests,
-        avgResponseTime,
-        successRate,
-        chartData: last7Days,
-      },
-    });
-  } catch (error) {
-    const message = maskError(error, req);
-    res.status(500).json({ success: false, error: message });
-  }
-});
-
-// List user's API keys
-app.get('/b2b/apikeys', authenticateJWT, async (req, res) => {
-  try {
-    const keys = await prisma.apiKey.findMany({
-      where: { userId: req.user.id, isActive: true },
-      select: {
-        id: true, name: true, key: true, isActive: true, createdAt: true, lastUsedAt: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    res.json({
-      success: true,
-      data: keys.map((k) => ({
-        ...k,
-        key: `${k.key.slice(0, 10)}...${k.key.slice(-4)}`, // Mask key
+      data: apiKeys.map(k => ({
+        id: k.id,
+        name: k.name,
+        key: k.key?.substring(0, 10) + '****',
+        isActive: k.isActive,
+        createdAt: k.createdAt,
+        lastUsedAt: k.lastUsedAt,
       })),
     });
   } catch (error) {
-    const message = maskError(error, req);
-    res.status(500).json({ success: false, error: message });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Create new API key
 app.post('/b2b/apikeys', authenticateJWT, async (req, res) => {
-  const { name } = req.body;
-  if (!name) {
-    return res.status(400).json({ success: false, error: 'Key name required' });
-  }
-
   try {
-    // Generate random key and secret
-    const key = `ak_${randomUUID().replace(/-/g, '').slice(0, 28)}`;
-    const secret = `as_${randomUUID().replace(/-/g, '').slice(0, 28)}`;
-    const secretHash = await bcrypt.hash(secret, 10);
+    const userId = req.user.id;
+    const { name } = req.body;
+    
+    if (!name) {
+      return res.status(400).json({ success: false, error: 'Key name is required' });
+    }
 
-    const apiKey = await prisma.apiKey.create({
-      data: {
+    const apiKey = 'ak_' + randomUUID().replace(/-/g, '').substring(0, 28);
+    const apiSecret = 'as_' + randomUUID().replace(/-/g, '').substring(0, 28);
+    const secretHash = await bcrypt.hash(apiSecret, 10);
+
+    let keyRecord;
+    if (prisma) {
+      keyRecord = await prisma.apiKey.create({
+        data: {
+          userId,
+          name,
+          key: apiKey,
+          secretHash,
+          isActive: true,
+        }
+      });
+    } else if (USE_MEMORY_FALLBACK) {
+      keyRecord = await memoryDB.createApiKey({
+        userId,
         name,
-        key,
+        key: apiKey,
         secretHash,
-        userId: req.user.id,
         isActive: true,
-      },
-    });
+      });
+    }
 
     res.status(201).json({
       success: true,
       data: {
-        id: apiKey.id,
-        name: apiKey.name,
-        key, // Show full key only once
-        secret, // Show full secret only once
-        createdAt: apiKey.createdAt,
-        warning: 'Store the API key and secret securely. You won\'t see the secret again!',
+        id: keyRecord.id,
+        name: keyRecord.name,
+        key: apiKey,
+        secret: apiSecret, // Only returned once
+        isActive: true,
+        createdAt: new Date(),
       },
+      message: 'Store your API secret securely. It will not be shown again.',
     });
   } catch (error) {
-    const message = maskError(error, req);
-    res.status(500).json({ success: false, error: message });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Revoke API key
 app.delete('/b2b/apikeys/:keyId', authenticateJWT, async (req, res) => {
   try {
-    const keyId = parseInt(req.params.keyId);
-    if (isNaN(keyId)) {
-      return res.status(400).json({ success: false, error: 'Invalid key ID' });
+    const userId = req.user.id;
+    const keyId = req.params.keyId;
+
+    if (prisma) {
+      const key = await prisma.apiKey.findFirst({ where: { id: keyId, userId } });
+      if (!key) {
+        return res.status(404).json({ success: false, error: 'API key not found' });
+      }
+      await prisma.apiKey.update({ where: { id: keyId }, data: { isActive: false } });
+    } else if (USE_MEMORY_FALLBACK) {
+      const key = memoryDB.apiKeys.get(keyId);
+      if (!key || key.userId !== userId) {
+        return res.status(404).json({ success: false, error: 'API key not found' });
+      }
+      key.isActive = false;
+      memoryDB.apiKeys.set(keyId, key);
     }
 
-    // Verify ownership
-    const apiKey = await prisma.apiKey.findUnique({ where: { id: keyId } });
-    if (!apiKey || apiKey.userId !== req.user.id) {
-      return res.status(403).json({ success: false, error: 'Not authorized' });
-    }
-
-    await prisma.apiKey.update({
-      where: { id: keyId },
-      data: { isActive: false },
-    });
-
-    // Invalidate Redis cache
-    await redis.del(`apikey:${apiKey.key}`);
-
-    res.json({ success: true, data: { message: 'API key revoked' } });
+    res.json({ success: true, message: 'API key revoked' });
   } catch (error) {
-    const message = maskError(error, req);
-    res.status(500).json({ success: false, error: message });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Regenerate API key secret
 app.post('/b2b/apikeys/:keyId/regenerate', authenticateJWT, async (req, res) => {
   try {
-    const keyId = parseInt(req.params.keyId);
-    if (isNaN(keyId)) {
-      return res.status(400).json({ success: false, error: 'Invalid key ID' });
-    }
+    const userId = req.user.id;
+    const keyId = req.params.keyId;
+    const newSecret = 'as_' + randomUUID().replace(/-/g, '').substring(0, 28);
+    const secretHash = await bcrypt.hash(newSecret, 10);
 
-    // Verify ownership
-    const apiKey = await prisma.apiKey.findUnique({ where: { id: keyId } });
-    if (!apiKey || apiKey.userId !== req.user.id) {
-      return res.status(403).json({ success: false, error: 'Not authorized' });
-    }
-
-    const newSecret = `as_${randomUUID().replace(/-/g, '').slice(0, 28)}`;
-    const newSecretHash = await bcrypt.hash(newSecret, 10);
-
-    await prisma.apiKey.update({
-      where: { id: keyId },
-      data: { secretHash: newSecretHash },
-    });
-
-    // Invalidate Redis cache
-    await redis.del(`apikey:${apiKey.key}`);
-
-    res.json({
-      success: true,
-      data: {
-        message: 'Secret regenerated',
-        secret: newSecret,
-        warning: 'Store the new secret securely. The old secret is now invalid!',
-      },
-    });
-  } catch (error) {
-    const message = maskError(error, req);
-    res.status(500).json({ success: false, error: message });
-  }
-});
-
-// Get API key usage statistics
-app.get('/b2b/apikeys/:keyId/usage', authenticateJWT, async (req, res) => {
-  try {
-    const keyId = parseInt(req.params.keyId);
-    if (isNaN(keyId)) {
-      return res.status(400).json({ success: false, error: 'Invalid key ID' });
-    }
-
-    // Verify ownership
-    const apiKey = await prisma.apiKey.findUnique({
-      where: { id: keyId },
-      include: {
-        apiLogs: {
-          select: {
-            responseTime: true, createdAt: true, endpoint: true, statusCode: true,
-          },
-        },
-      },
-    });
-
-    if (!apiKey || apiKey.userId !== req.user.id) {
-      return res.status(403).json({ success: false, error: 'Not authorized' });
-    }
-
-    const logs = apiKey.apiLogs;
-    const totalRequests = logs.length;
-    const avgResponseTime = logs.length > 0
-      ? Math.round(logs.reduce((a, b) => a + b.responseTime, 0) / logs.length)
-      : 0;
-
-    // Group by endpoint
-    const endpointStats = {};
-    logs.forEach((log) => {
-      if (!endpointStats[log.endpoint]) {
-        endpointStats[log.endpoint] = { count: 0, avgTime: 0, totalTime: 0 };
+    if (prisma) {
+      const key = await prisma.apiKey.findFirst({ where: { id: keyId, userId } });
+      if (!key) {
+        return res.status(404).json({ success: false, error: 'API key not found' });
       }
-      endpointStats[log.endpoint].count++;
-      endpointStats[log.endpoint].totalTime += log.responseTime;
-    });
-
-    Object.keys(endpointStats).forEach((endpoint) => {
-      endpointStats[endpoint].avgTime = Math.round(
-        endpointStats[endpoint].totalTime / endpointStats[endpoint].count,
-      );
-    });
+      await prisma.apiKey.update({ where: { id: keyId }, data: { secretHash } });
+    } else if (USE_MEMORY_FALLBACK) {
+      const key = memoryDB.apiKeys.get(keyId);
+      if (!key || key.userId !== userId) {
+        return res.status(404).json({ success: false, error: 'API key not found' });
+      }
+      key.secretHash = secretHash;
+      memoryDB.apiKeys.set(keyId, key);
+    }
 
     res.json({
       success: true,
-      data: {
-        keyName: apiKey.name,
-        totalRequests,
-        avgResponseTime,
-        endpointStats,
-        lastUsed: apiKey.lastUsedAt,
-      },
+      data: { secret: newSecret },
+      message: 'Store your new API secret securely. It will not be shown again.',
     });
   } catch (error) {
-    const message = maskError(error, req);
-    res.status(500).json({ success: false, error: message });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Mount routes
+// Admin Endpoints
+app.get('/admin/users', authenticateJWT, async (req, res) => {
+  try {
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, error: 'Admin access required' });
+    }
+
+    let users = [];
+    if (prisma) {
+      users = await prisma.user.findMany({
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          email: true,
+          businessName: true,
+          phone: true,
+          status: true,
+          planType: true,
+          createdAt: true,
+          lastActive: true,
+        }
+      });
+    } else if (USE_MEMORY_FALLBACK) {
+      users = Array.from(memoryDB.users.values()).filter(u => u.email !== 'demo@villageapi.com');
+    }
+
+    res.json({ success: true, data: users });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.patch('/admin/users/:id/approve', authenticateJWT, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, error: 'Admin access required' });
+    }
+
+    const userId = parseInt(req.params.id);
+    if (isNaN(userId)) {
+      return res.status(400).json({ success: false, error: 'Invalid user ID' });
+    }
+
+    let user;
+    if (prisma) {
+      user = await prisma.user.update({
+        where: { id: userId },
+        data: { status: 'ACTIVE' },
+      });
+    } else if (USE_MEMORY_FALLBACK) {
+      user = memoryDB.users.get(`user-${userId}`) || memoryDB.users.get(userId);
+      if (user) {
+        user.status = 'ACTIVE';
+        memoryDB.users.set(user.id, user);
+        memoryDB.users.set(user.email, user);
+      }
+    }
+
+    res.json({ success: true, data: user, message: 'User approved' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.patch('/admin/users/:id/plan', authenticateJWT, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, error: 'Admin access required' });
+    }
+
+    const userId = parseInt(req.params.id);
+    const { planType } = req.body;
+    
+    if (isNaN(userId)) {
+      return res.status(400).json({ success: false, error: 'Invalid user ID' });
+    }
+    
+    const validPlans = ['FREE', 'PREMIUM', 'PRO', 'UNLIMITED'];
+    if (!validPlans.includes(planType)) {
+      return res.status(400).json({ success: false, error: 'Invalid plan type' });
+    }
+
+    let user;
+    if (prisma) {
+      user = await prisma.user.update({
+        where: { id: userId },
+        data: { planType },
+      });
+    } else if (USE_MEMORY_FALLBACK) {
+      user = memoryDB.users.get(`user-${userId}`) || memoryDB.users.get(userId);
+      if (user) {
+        user.planType = planType;
+        memoryDB.users.set(user.id, user);
+        memoryDB.users.set(user.email, user);
+      }
+    }
+
+    res.json({ success: true, data: user, message: 'Plan updated' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/admin/analytics', authenticateJWT, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, error: 'Admin access required' });
+    }
+
+    let stats = {
+      totalUsers: 0,
+      activeUsers: 0,
+      pendingUsers: 0,
+      totalVillages: 619225,
+      totalRequests: 0,
+      avgResponseTime: 0,
+    };
+
+    if (prisma) {
+      stats.totalUsers = await prisma.user.count();
+      stats.activeUsers = await prisma.user.count({ where: { status: 'ACTIVE' } });
+      stats.pendingUsers = await prisma.user.count({ where: { status: 'PENDING_APPROVAL' } });
+      stats.totalVillages = await prisma.village.count();
+      stats.totalRequests = await prisma.apiLog.count();
+      const avgTime = await prisma.apiLog.aggregate({ _avg: { responseTime: true } });
+      stats.avgResponseTime = Math.round(avgTime._avg?.responseTime || 0);
+    } else if (USE_MEMORY_FALLBACK) {
+      const users = Array.from(memoryDB.users.values());
+      stats.totalUsers = users.filter(u => u.email && !u.email.includes('admin')).length;
+      stats.activeUsers = users.filter(u => u.status === 'ACTIVE').length;
+      stats.pendingUsers = users.filter(u => u.status === 'PENDING_APPROVAL').length;
+      stats.totalRequests = memoryDB.apiLogs.length;
+      stats.totalVillages = memoryDB.villages.length;
+    }
+
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/admin/logs', authenticateJWT, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, error: 'Admin access required' });
+    }
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+    const skip = (page - 1) * limit;
+
+    let logs = [];
+    let total = 0;
+
+    if (prisma) {
+      logs = await prisma.apiLog.findMany({
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        include: { user: { select: { email: true, businessName: true } } }
+      });
+      total = await prisma.apiLog.count();
+    } else if (USE_MEMORY_FALLBACK) {
+      logs = memoryDB.apiLogs.slice(-limit * page).reverse();
+      total = memoryDB.apiLogs.length;
+    }
+
+    res.json({
+      success: true,
+      data: logs.map(l => ({
+        ...l,
+        apiKey: l.apiKey ? l.apiKey.substring(0, 8) + '****' : null,
+      })),
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 app.use('/payments', authenticateJWT, paymentRoutes);
-app.use('/webhooks', webhookRoutes);
+app.use('/webhooks', authenticateJWT, webhookRoutes);
 app.use('/teams', authenticateJWT, teamRoutes);
 app.use('/b2b/analytics', authenticateJWT, analyticsRoutes);
 
-// Documentation routes
 app.get('/', (req, res) => res.send(getDocsPage()));
 app.get('/docs', (req, res) => res.send(getDocsPage()));
 app.get('/api-docs/', swaggerUi.serve, swaggerUi.setup(specs));
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
 app.get('/api-spec', (req, res) => res.json(specs));
 
-// Global error handler
 app.use((err, req, res, _next) => {
   console.error('Unhandled error:', err);
   const message = process.env.NODE_ENV === 'production'
@@ -1356,135 +1237,87 @@ app.use((err, req, res, _next) => {
   res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message } });
 });
 
-// Initialize demo API key
 async function initializeDemoKey() {
+  if (!USE_MEMORY_FALLBACK) return;
+  
   try {
-    // Check if demo user exists
-    let demoUser = await prisma.user.findUnique({ where: { email: 'demo@villageapi.com' } });
-
-    if (!demoUser) {
-      const hashedPassword = await bcrypt.hash('Demo@123456', 10);
-      demoUser = await prisma.user.create({
-        data: {
-          email: 'demo@villageapi.com',
-          businessName: 'Village API Demo',
-          passwordHash: hashedPassword,
-          planType: 'UNLIMITED',
-          status: 'ACTIVE',
-        },
-      });
-      console.log('✅ Created demo user: demo@villageapi.com');
-    }
-
-    // Check if demo API key exists
-    const existingKey = await prisma.apiKey.findFirst({
-      where: { userId: demoUser.id, name: 'Demo Client Key' },
-    });
-
-    if (!existingKey) {
-      const demoKey = `ak_${randomUUID().replace(/-/g, '').slice(0, 28)}`;
-      const demoSecret = `as_${randomUUID().replace(/-/g, '').slice(0, 28)}`;
-      const demoSecretHash = await bcrypt.hash(demoSecret, 10);
-
-      await prisma.apiKey.create({
-        data: {
-          userId: demoUser.id,
-          name: 'Demo Client Key',
-          key: demoKey,
-          secretHash: demoSecretHash,
-          isActive: true,
-        },
-      });
-
-      console.log('✅ Created demo API key:', demoKey);
-      console.log('⚠️  Demo Secret (save this):', demoSecret);
-
-      await redis.setEx(`apikey:${demoKey}`, 300, JSON.stringify({
-        userId: demoUser.id,
-        isActive: true,
-        user: demoUser,
-      }));
-    } else {
-      await redis.setEx(`apikey:${existingKey.key}`, 300, JSON.stringify({
-        userId: demoUser.id,
-        isActive: true,
-        user: demoUser,
-      }));
-      console.log('✅ Demo API key already exists');
-    }
+    await memoryDB.initDemoData();
   } catch (err) {
     console.error('Demo key initialization error:', err);
   }
 }
 
-// Graceful shutdown handling
 let isShuttingDown = false;
 
 async function gracefulShutdown(signal) {
-  if (isShuttingDown) {
-    console.log('Already shutting down, ignoring signal');
-    return;
-  }
-
+  if (isShuttingDown) return;
   isShuttingDown = true;
   console.log(`\n${signal} received, starting graceful shutdown...`);
 
-  // Set timeout for forced shutdown
   const forceShutdown = setTimeout(() => {
-    console.error('Could not close connections in time, forcefully shutting down');
+    console.error('Forcefully shutting down');
     process.exit(1);
   }, 30000);
 
   try {
-    // Stop accepting new requests
-    console.log('Closing HTTP server...');
-    await new Promise((resolve, reject) => {
-      server.close((err) => {
-        if (err) reject(err);
-        else resolve();
+    if (server) {
+      await new Promise((resolve, reject) => {
+        server.close((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
       });
-    });
-    console.log('HTTP server closed');
+    }
 
-    // Close database connections
-    console.log('Disconnecting from database...');
-    await prisma.$disconnect();
-    console.log('Database disconnected');
+    if (prisma) {
+      await prisma.$disconnect();
+      console.log('Database disconnected');
+    }
 
-    // Close Redis connection
-    console.log('Disconnecting from Redis...');
-    await redis.quit();
-    console.log('Redis disconnected');
+    if (redis) {
+      await redis.quit();
+      console.log('Redis disconnected');
+    }
 
     clearTimeout(forceShutdown);
-    console.log('✅ Graceful shutdown completed');
+    console.log('Graceful shutdown completed');
     process.exit(0);
   } catch (error) {
-    console.error('Error during graceful shutdown:', error);
+    console.error('Error during shutdown:', error);
     clearTimeout(forceShutdown);
     process.exit(1);
   }
 }
 
-const PORT = process.env.PORT ?? 3000;
-const server = app.listen(PORT, async () => {
-  console.log(`✅ Village API running on port ${PORT}`);
-  console.log(`📚 API Docs: http://localhost:${PORT}/api-docs`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  await initializeDemoKey();
-});
+const PORT = process.env.PORT || 3000;
+let server;
 
-// Register shutdown handlers
+async function startServer() {
+  await initRedis();
+  await initializeDemoKey();
+  
+  server = app.listen(PORT, () => {
+    console.log(`Village API running on port ${PORT}`);
+    console.log(`API Docs: http://localhost:${PORT}/api-docs`);
+    console.log(`Mode: ${USE_MEMORY_FALLBACK ? 'Memory Fallback (Demo)' : 'Database'}`);
+    if (USE_MEMORY_FALLBACK) {
+      console.log('');
+      console.log('Demo Credentials:');
+      console.log('  API Key: ak_demo123456789012345678901234');
+      console.log('  API Secret: as_demo123456789012345678901234');
+      console.log('  Demo Login: demo@villageapi.com / Demo@123456');
+    }
+  });
+}
+
+startServer();
+
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-
-// Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);
   gracefulShutdown('UNCAUGHT_EXCEPTION');
 });
-
-// Handle unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
   gracefulShutdown('UNHANDLED_REJECTION');

@@ -8,3 +8,5 @@ all_india_villages_clean.csv
 *.log
 .DS_Store
 import_*.log
+.env.production
+deploy-*.sh
