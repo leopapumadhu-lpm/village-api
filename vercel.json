@@ -1,16 +1,45 @@
 {
-    "version": 2,
-    "builds": [
-      {"src": "frontend/package.json", "use": "@vercel/static-build", "config": {"distDir": "dist"}},
-      {"src": "api/server.js", "use": "@vercel/node"}
-    ],
-    "routes": [
-      {"src": "/api/(.*)", "dest": "api/server.js"},
-      {"src": "/admin/(.*)", "dest": "api/server.js"},
-      {"src": "/auth/(.*)", "dest": "api/server.js"},
-      {"src": "/b2b/(.*)", "dest": "api/server.js"},
-      {"src": "/v1/(.*)", "dest": "api/server.js"},
-      {"src": "/(.*)", "dest": "frontend/dist/$1"}
-    ],
-    "env": {"NODE_ENV": "production"}
+  "version": 2,
+  "builds": [
+    {
+      "src": "frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    },
+    {
+      "src": "api/server.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "api/server.js"
+    },
+    {
+      "src": "/admin/(.*)",
+      "dest": "api/server.js"
+    },
+    {
+      "src": "/auth/(.*)",
+      "dest": "api/server.js"
+    },
+    {
+      "src": "/b2b/(.*)",
+      "dest": "api/server.js"
+    },
+    {
+      "src": "/v1/(.*)",
+      "dest": "api/server.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/$1"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
   }
+}
