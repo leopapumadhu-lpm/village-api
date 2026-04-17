@@ -219,6 +219,7 @@ const DEMO_MODE = process.env.DEMO_MODE === 'true' || USE_MEMORY_FALLBACK;
 
 const app = express();
 const memoryDB = new MemoryDB();
+const IS_VERCEL = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
 
 let prisma = null;
 try {
@@ -456,6 +457,16 @@ app.post('/auth/logout', (req, res) => {
 app.use((req, _res, next) => {
   req._startTime = Date.now();
   next();
+});
+
+app.use(async (req, res, next) => {
+  try {
+    await ensureInitialized();
+    next();
+  } catch (error) {
+    console.error('Application initialization failed:', error);
+    res.status(500).json({ success: false, error: 'Application initialization failed' });
+  }
 });
 
 app.get('/health', async (req, res) => {
@@ -1252,6 +1263,21 @@ async function initializeDemoKey() {
 }
 
 let isShuttingDown = false;
+let initPromise = null;
+
+async function ensureInitialized() {
+  if (!initPromise) {
+    initPromise = (async () => {
+      await initRedis();
+      await initializeDemoKey();
+    })().catch((error) => {
+      initPromise = null;
+      throw error;
+    });
+  }
+
+  return initPromise;
+}
 
 async function gracefulShutdown(signal) {
   if (isShuttingDown) return;
@@ -1297,8 +1323,7 @@ const PORT = process.env.PORT || 3000;
 let server;
 
 async function startServer() {
-  await initRedis();
-  await initializeDemoKey();
+  await ensureInitialized();
   
   server = app.listen(PORT, () => {
     console.log(`Village API running on port ${PORT}`);
@@ -1314,7 +1339,6 @@ async function startServer() {
   });
 }
 
-
 // Serve frontend
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1328,17 +1352,19 @@ if (fs.existsSync(frontendDist)) {
   });
 }
 
-startServer();
+if (!IS_VERCEL) {
+  startServer();
 
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error);
-  gracefulShutdown('UNCAUGHT_EXCEPTION');
-});
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  gracefulShutdown('UNHANDLED_REJECTION');
-});
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+  process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
+    gracefulShutdown('UNCAUGHT_EXCEPTION');
+  });
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    gracefulShutdown('UNHANDLED_REJECTION');
+  });
+}
 
 export default app;
