@@ -1,6 +1,5 @@
 import express from 'express';
 import Stripe from 'stripe';
-import { PrismaClient } from '@prisma/client';
 
 const router = express.Router();
 
@@ -8,6 +7,7 @@ const router = express.Router();
 let prisma = null;
 try {
   if (process.env.DATABASE_URL) {
+    const { PrismaClient } = await import('@prisma/client');
     prisma = new PrismaClient();
   }
 } catch (e) {

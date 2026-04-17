@@ -1,10 +1,9 @@
 // Webhook Service - gracefully handles missing database
 
-import { PrismaClient } from '@prisma/client';
-
 let prisma = null;
 try {
   if (process.env.DATABASE_URL) {
+    const { PrismaClient } = await import('@prisma/client');
     prisma = new PrismaClient();
   }
 } catch (e) {

@@ -1,7 +1,6 @@
 // Stripe Service - gracefully handles missing configuration
 
 import Stripe from 'stripe';
-import { PrismaClient } from '@prisma/client';
 
 const stripe = process.env.STRIPE_SECRET_KEY && process.env.STRIPE_SECRET_KEY !== 'sk_test_placeholder'
   ? new Stripe(process.env.STRIPE_SECRET_KEY)
@@ -10,6 +9,7 @@ const stripe = process.env.STRIPE_SECRET_KEY && process.env.STRIPE_SECRET_KEY !=
 let prisma = null;
 try {
   if (process.env.DATABASE_URL) {
+    const { PrismaClient } = await import('@prisma/client');
     prisma = new PrismaClient();
   }
 } catch (e) {

@@ -1,5 +1,4 @@
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { sendTeamInvitation } from '../services/emailService.js';
 
@@ -9,6 +8,7 @@ const router = express.Router();
 let prisma = null;
 try {
   if (process.env.DATABASE_URL) {
+    const { PrismaClient } = await import('@prisma/client');
     prisma = new PrismaClient();
   }
 } catch (e) {

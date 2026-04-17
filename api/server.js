@@ -7,7 +7,6 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
-import { PrismaClient } from '@prisma/client';
 import { createClient } from 'redis';
 import { randomUUID } from 'crypto';
 import jwt from 'jsonwebtoken';
@@ -224,6 +223,7 @@ const IS_VERCEL = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
 let prisma = null;
 try {
   if (!USE_MEMORY_FALLBACK && process.env.DATABASE_URL) {
+    const { PrismaClient } = await import('@prisma/client');
     prisma = new PrismaClient();
     console.log('Database mode: PostgreSQL');
   }
@@ -1345,7 +1345,7 @@ const __dirname = dirname(__filename);
 const frontendDist = join(__dirname, '../frontend/dist');
 if (fs.existsSync(frontendDist)) {
   app.use(express.static(frontendDist));
-  app.get('*', (req, res, next) => {
+  app.get(/.*/, (req, res, next) => {
     const skip = ['/api','/v1','/auth','/admin','/health','/b2b','/payments','/teams'];
     if (skip.some(p => req.path.startsWith(p))) return next();
     res.sendFile(join(frontendDist, 'index.html'));
