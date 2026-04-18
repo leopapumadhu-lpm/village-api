@@ -217,6 +217,7 @@ const USE_MEMORY_FALLBACK = process.env.USE_MEMORY_FALLBACK === 'true' || !proce
 const DEMO_MODE = process.env.DEMO_MODE === 'true' || USE_MEMORY_FALLBACK;
 
 const app = express();
+app.set("trust proxy", 1);
 const memoryDB = new MemoryDB();
 const IS_VERCEL = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
 
@@ -292,9 +293,20 @@ app.use(express.json({ limit: '10mb' }));
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 500,
-  message: { success: false, error: { code: 'RATE_LIMITED', message: 'Too many requests' } },
+  message: {
+    success: false,
+    error: {
+      code: 'RATE_LIMITED',
+      message: 'Too many requests'
+    }
+  },
   standardHeaders: true,
   legacyHeaders: false,
+
+  
+  keyGenerator: (req) => {
+    return req.headers['x-forwarded-for']?.split(',')[0] || req.ip;
+  },
 }));
 
 app.use((req, res, next) => {
